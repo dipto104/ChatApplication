@@ -64,3 +64,62 @@ module.exports.getAllUsers = async (req, res, next) => {
         next(ex);
     }
 };
+
+module.exports.getActiveConversations = async (req, res, next) => {
+    try {
+        const userId = parseInt(req.params.id);
+        const conversations = await prisma.conversation.findMany({
+            where: {
+                participants: {
+                    some: { id: userId },
+                },
+            },
+            include: {
+                participants: {
+                    where: {
+                        id: { not: userId },
+                    },
+                    select: {
+                        id: true,
+                        username: true,
+                        avatar: true,
+                    },
+                },
+                messages: {
+                    orderBy: {
+                        createdAt: "desc",
+                    },
+                    take: 1,
+                },
+            },
+            orderBy: {
+                updatedAt: "desc",
+            },
+        });
+
+        const activeUsers = await Promise.all(conversations.map(async (convo) => {
+            const otherUser = convo.participants[0];
+
+            // Count unread messages from the other user in this conversation
+            const unreadCount = await prisma.message.count({
+                where: {
+                    conversationId: convo.id,
+                    senderId: otherUser.id,
+                    status: { not: "READ" },
+                },
+            });
+
+            return {
+                ...otherUser,
+                conversationId: convo.id,
+                lastMessage: convo.messages[0]?.content || "",
+                lastMessageTime: convo.messages[0]?.createdAt || convo.updatedAt,
+                unreadCount: unreadCount,
+            };
+        }));
+
+        return res.json(activeUsers);
+    } catch (ex) {
+        next(ex);
+    }
+};

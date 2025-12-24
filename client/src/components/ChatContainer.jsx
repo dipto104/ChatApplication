@@ -7,79 +7,104 @@ import Logo from "../assets/logo.svg";
 import axios from "axios";
 import { sendMessageRoute, recieveMessageRoute } from "../utils/APIRoutes";
 
-import { IoArrowBack } from "react-icons/io5";
+import { IoArrowBack, IoClose } from "react-icons/io5";
+import { BsCheck, BsCheckAll } from "react-icons/bs";
+import { markAsReadRoute } from "../utils/APIRoutes";
 
-export default function ChatContainer({ currentChat, socket, onlineUsers, onBack, currentUser, userStatus, onStatusToggle }) {
+export default function ChatContainer({ currentChat, socket, onlineUsers, onBack, onClose, currentUser, userStatus, onStatusToggle, arrivalMessage, refreshContacts }) {
   const [messages, setMessages] = useState([]);
   const scrollRef = useRef();
-  const [arrivalMessage, setArrivalMessage] = useState(null);
 
   const isOnline = onlineUsers?.includes(currentChat.id);
 
+  // Mark as read function
+  const markMessagesAsRead = async () => {
+    if (currentChat && currentUser) {
+      await axios.post(markAsReadRoute, {
+        conversationId: currentChat.conversationId || 0,
+        researcherId: currentUser.id,
+        senderId: currentChat.id, // The person who sent the messages we are reading
+      });
+      socket.current.emit("read-msg", {
+        to: currentChat.id,
+        from: currentUser.id,
+      });
+      if (refreshContacts) refreshContacts();
+    }
+  };
+
   useEffect(() => {
     async function fetchData() {
-      const data = await JSON.parse(
-        localStorage.getItem("chat-app-user")
-      );
-      if (currentChat) {
+      if (currentChat && currentUser) {
         const response = await axios.post(recieveMessageRoute, {
-          from: data.id,
+          from: currentUser.id,
           to: currentChat.id,
         });
         setMessages(response.data);
+        markMessagesAsRead();
       }
     }
     fetchData();
   }, [currentChat]);
 
-  useEffect(() => {
-    const getCurrentChat = async () => {
-      if (currentChat) {
-        await JSON.parse(
-          localStorage.getItem("chat-app-user")
-        );
-      }
-    };
-    getCurrentChat();
-  }, [currentChat]);
-
   const handleSendMsg = async (msg) => {
-    const data = await JSON.parse(
-      localStorage.getItem("chat-app-user")
-    );
     socket.current.emit("send-msg", {
       to: currentChat.id,
-      from: data.id,
+      from: currentUser.id,
       msg,
     });
     await axios.post(sendMessageRoute, {
-      from: data.id,
+      from: currentUser.id,
       to: currentChat.id,
       message: msg,
     });
 
-    const msgs = [...messages];
-    msgs.push({ fromSelf: true, message: msg });
-    setMessages(msgs);
+    setMessages((prev) => [...prev, {
+      fromSelf: true,
+      message: msg,
+      status: isOnline ? "DELIVERED" : "SENT",
+      time: new Date()
+    }]);
   };
 
+  // Handle incoming status/message events from prop
   useEffect(() => {
-    if (socket.current) {
-      socket.current.on("msg-recieve", (data) => {
-        setArrivalMessage({ from: data.from, fromSelf: false, message: data.msg });
-      });
+    if (arrivalMessage) {
+      if (arrivalMessage.type === "delivered") {
+        if (currentChat?.id === arrivalMessage.from) {
+          setMessages((prev) =>
+            prev.map(msg => (msg.fromSelf && msg.status === "SENT") ? { ...msg, status: "DELIVERED" } : msg)
+          );
+        }
+      } else if (arrivalMessage.type === "read") {
+        if (currentChat?.id === arrivalMessage.from) {
+          setMessages((prev) =>
+            prev.map(msg => msg.fromSelf ? { ...msg, status: "READ" } : msg)
+          );
+        }
+      } else {
+        // Normal message
+        if (currentChat?.id === arrivalMessage.from) {
+          setMessages((prev) => [...prev, {
+            fromSelf: false,
+            message: arrivalMessage.message,
+            status: "SENT",
+            time: arrivalMessage.time
+          }]);
+          markMessagesAsRead();
+        }
+      }
     }
-  }, []);
-
-  useEffect(() => {
-    arrivalMessage &&
-      currentChat?.id === arrivalMessage.from &&
-      setMessages((prev) => [...prev, arrivalMessage]);
   }, [arrivalMessage]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const formatTime = (time) => {
+    const date = new Date(time);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
   return (
     <Container>
@@ -89,9 +114,9 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, onBack
             <IoArrowBack />
           </div>
           <div className="avatar">
-            {currentChat.avatar ? (
+            {currentChat.avatarImage ? (
               <img
-                src={`data:image/svg+xml;base64,${currentChat.avatar}`}
+                src={`data:image/svg+xml;base64,${currentChat.avatarImage}`}
                 alt=""
               />
             ) : (
@@ -107,11 +132,16 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, onBack
             </span>
           </div>
         </div>
-        <UserMenu
-          currentUser={currentUser}
-          userStatus={userStatus}
-          onStatusToggle={onStatusToggle}
-        />
+        <div className="header-actions">
+          <UserMenu
+            currentUser={currentUser}
+            userStatus={userStatus}
+            onStatusToggle={onStatusToggle}
+          />
+          <div className="close-button" onClick={onClose} title="Close Chat">
+            <IoClose />
+          </div>
+        </div>
       </div>
       <div className="chat-messages">
         {messages.map((message) => {
@@ -123,6 +153,20 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, onBack
               >
                 <div className="content">
                   <p>{message.message}</p>
+                  <div className="meta">
+                    <span className="time">{formatTime(message.time)}</span>
+                    {message.fromSelf && (
+                      <span className="status-icon">
+                        {message.status === "READ" ? (
+                          <BsCheckAll className="read" />
+                        ) : message.status === "DELIVERED" ? (
+                          <BsCheckAll className="delivered" />
+                        ) : (
+                          <BsCheck className="sent" />
+                        )}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -218,6 +262,31 @@ const Container = styled.div`
         }
       }
     }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+
+      .close-button {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 0.5rem;
+        background-color: rgba(255, 255, 255, 0.05);
+        border-radius: 50%;
+        color: var(--text-main);
+        font-size: 1.4rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+
+        &:hover {
+          background-color: rgba(239, 68, 68, 0.2);
+          color: #ef4444;
+          transform: rotate(90deg);
+        }
+      }
+    }
   }
 
   .chat-messages {
@@ -254,6 +323,32 @@ const Container = styled.div`
         
         @media screen and (max-width: 719px) {
           max-width: 85%;
+        }
+
+        .meta {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 0.4rem;
+          margin-top: 0.2rem;
+          font-size: 0.7rem;
+          
+          .time {
+            color: rgba(255, 255, 255, 0.5);
+          }
+
+          .status-icon {
+            display: flex;
+            align-items: center;
+            font-size: 1.1rem;
+            
+            .sent, .delivered {
+              color: rgba(255, 255, 255, 0.4);
+            }
+            .read {
+              color: #3390ec;
+            }
+          }
         }
       }
     }

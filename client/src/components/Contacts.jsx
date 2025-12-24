@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import styled from "styled-components";
 import Logo from "../assets/logo.svg";
 
-export default function Contacts({ contacts, changeChat, onlineUsers, userStatus, onStatusToggle }) {
+export default function Contacts({ contacts, changeChat, onlineUsers, userStatus, onStatusToggle, isConversationList }) {
   const [currentUserName, setCurrentUserName] = useState(undefined);
   const [currentUserImage, setCurrentUserImage] = useState(undefined);
   const [currentSelected, setCurrentSelected] = useState(undefined);
@@ -17,8 +17,8 @@ export default function Contacts({ contacts, changeChat, onlineUsers, userStatus
     }
   }, []);
 
-  const changeCurrentChat = (index, contact) => {
-    setCurrentSelected(index);
+  const changeCurrentChat = (contact) => {
+    setCurrentSelected(contact.id);
     changeChat(contact);
   };
 
@@ -32,15 +32,15 @@ export default function Contacts({ contacts, changeChat, onlineUsers, userStatus
         <Container>
           <div className="brand">
             <img src={Logo} alt="logo" />
-            <h1 className="brand-name">snappy</h1>
+            <h1 className="brand-name">chat</h1>
           </div>
           <div className="contacts">
             {contacts.map((contact, index) => {
               return (
                 <div
                   key={contact.id}
-                  className={`contact ${index === currentSelected ? "selected" : ""}`}
-                  onClick={() => changeCurrentChat(index, contact)}
+                  className={`contact ${contact.id === currentSelected ? "selected" : ""}`}
+                  onClick={() => changeCurrentChat(contact)}
                 >
                   <div className="avatar">
                     {contact.avatarImage ? (
@@ -57,7 +57,19 @@ export default function Contacts({ contacts, changeChat, onlineUsers, userStatus
                   </div>
                   <div className="username">
                     <h3>{contact.username}</h3>
+                    {isConversationList && contact.lastMessage && (
+                      <p className="last-message">
+                        {contact.lastMessage.length > 25
+                          ? contact.lastMessage.substring(0, 25) + "..."
+                          : contact.lastMessage}
+                      </p>
+                    )}
                   </div>
+                  {isConversationList && contact.unreadCount > 0 && (
+                    <div className="unread-badge">
+                      {contact.unreadCount}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -195,18 +207,51 @@ const Container = styled.div`
       .username {
         h3 {
           color: var(--text-main);
-          font-size: 1.05rem;
-          font-weight: 500;
+          transition: color 0.3s ease;
+          font-size: 1rem;
+        }
+        .last-message {
+          color: var(--text-dim);
+          font-size: 0.8rem;
+          margin-top: 0.1rem;
+          font-weight: 400;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
       }
       &:hover {
         background-color: rgba(255, 255, 255, 0.03);
       }
     }
+    .unread-badge {
+      background-color: #3390ec;
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 600;
+      min-width: 1.2rem;
+      height: 1.2rem;
+      padding: 0 0.4rem;
+      border-radius: 1rem;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(51, 144, 236, 0.7); }
+      70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(51, 144, 236, 0); }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(51, 144, 236, 0); }
+    }
 
     .selected {
-      border-color: rgba(255, 255, 255, 0.2);
-      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+      background-color: #2b5278 !important;
+      border-left: 3px solid #3390ec;
+      .username h3 {
+          color: white;
+          font-weight: 600;
+      }
     }
   }
 

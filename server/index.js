@@ -41,12 +41,38 @@ io.on("connection", (socket) => {
     await broadcastOnlineUsers();
   });
 
-  socket.on("send-msg", (data) => {
+  socket.on("send-msg", async (data) => {
     const sendUserSocket = onlineUsers.get(data.to);
     if (sendUserSocket) {
       socket.to(sendUserSocket).emit("msg-recieve", {
         msg: data.msg,
         from: data.from
+      });
+      // Acknowledgment for Delivery
+      socket.emit("msg-delivered", {
+        to: data.from, // send back to original sender
+        from: data.to,
+      });
+
+      // Update database status
+      await prisma.message.updateMany({
+        where: {
+          senderId: data.from,
+          conversation: {
+            participants: { some: { id: data.to } }
+          },
+          status: "SENT",
+        },
+        data: { status: "DELIVERED" }
+      });
+    }
+  });
+
+  socket.on("read-msg", (data) => {
+    const readerUserSocket = onlineUsers.get(data.to); // Send to the person who sent the original message
+    if (readerUserSocket) {
+      socket.to(readerUserSocket).emit("msg-read", {
+        from: data.from, // who read the message
       });
     }
   });

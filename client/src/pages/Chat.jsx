@@ -3,15 +3,17 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import styled from "styled-components";
-import { allUsersRoute, host } from "../utils/APIRoutes";
+import { allUsersRoute, activeConversationsRoute, host } from "../utils/APIRoutes";
 import ChatContainer from "../components/ChatContainer";
 import Contacts from "../components/Contacts";
 import Welcome from "../components/Welcome";
+import OnlineSidebar from "../components/OnlineSidebar";
 
 export default function Chat() {
     const navigate = useNavigate();
     const socket = useRef();
-    const [contacts, setContacts] = useState([]);
+    const [contacts, setContacts] = useState([]); // This will now represent "Active Conversations"
+    const [allUsers, setAllUsers] = useState([]); // This will represent "All Known Users" for online status
     const [currentChat, setCurrentChat] = useState(undefined);
     const [currentUser, setCurrentUser] = useState(undefined);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -32,8 +34,14 @@ export default function Chat() {
 
     const [onlineUsers, setOnlineUsers] = useState([]);
     const [userStatus, setUserStatus] = useState("online");
+    const [arrivalMessage, setArrivalMessage] = useState(null);
 
     const [showChatOnMobile, setShowChatOnMobile] = useState(false);
+
+    const currentChatRef = useRef();
+    useEffect(() => {
+        currentChatRef.current = currentChat;
+    }, [currentChat]);
 
     useEffect(() => {
         if (currentUser) {
@@ -44,6 +52,51 @@ export default function Chat() {
             socket.current.on("get-online-users", (users) => {
                 setOnlineUsers(users);
             });
+
+            socket.current.on("msg-recieve", (data) => {
+                setArrivalMessage({
+                    from: data.from,
+                    message: data.msg,
+                    time: new Date()
+                });
+
+                setContacts((prev) => {
+                    const updatedContacts = prev.map((contact) => {
+                        if (contact.id === data.from) {
+                            return {
+                                ...contact,
+                                lastMessage: data.msg,
+                                unreadCount: currentChatRef.current?.id === data.from ? 0 : (contact.unreadCount || 0) + 1,
+                            };
+                        }
+                        return contact;
+                    });
+
+                    return updatedContacts.sort((a, b) => {
+                        if (a.id === data.from) return -1;
+                        if (b.id === data.from) return 1;
+                        return 0;
+                    });
+                });
+            });
+
+            socket.current.on("msg-delivered", (data) => {
+                setArrivalMessage({
+                    from: data.from,
+                    type: "delivered"
+                });
+            });
+
+            socket.current.on("msg-read", (data) => {
+                setArrivalMessage({
+                    from: data.from,
+                    type: "read"
+                });
+            });
+
+            return () => {
+                socket.current.disconnect();
+            };
         }
     }, [currentUser]);
 
@@ -61,23 +114,45 @@ export default function Chat() {
         setCurrentUser(updatedUser);
     };
 
+    const fetchConversations = async () => {
+        if (currentUser) {
+            const data = await axios.get(`${activeConversationsRoute}/${currentUser.id}`);
+            setContacts(data.data);
+        }
+    };
+
+    // Fetch Active Conversations (Left Sidebar)
     useEffect(() => {
-        async function fetchData() {
+        fetchConversations();
+    }, [currentUser]); // Re-fetch when user logs in or contacts need refresh
+
+    // Fetch All Users (Right Sidebar / Discovery)
+    useEffect(() => {
+        async function fetchAllUsers() {
             if (currentUser) {
                 const data = await axios.get(`${allUsersRoute}/${currentUser.id}`);
-                setContacts(data.data);
+                setAllUsers(data.data);
             }
         }
-        fetchData();
+        fetchAllUsers();
     }, [currentUser]);
 
     const handleChatChange = (chat) => {
         setCurrentChat(chat);
         setShowChatOnMobile(true);
+
+        // Reset unread count locally for this contact
+        setContacts((prev) =>
+            prev.map(c => c.id === chat.id ? { ...c, unreadCount: 0 } : c)
+        );
     };
 
     const handleBackToContacts = () => {
         setShowChatOnMobile(false);
+    };
+
+    const handleCloseChat = () => {
+        setCurrentChat(undefined);
     };
 
     return (
@@ -90,6 +165,7 @@ export default function Chat() {
                         onlineUsers={onlineUsers}
                         userStatus={userStatus}
                         onStatusToggle={handleStatusToggle}
+                        isConversationList={true}
                     />
                 </div>
                 <div className="chat-wrapper">
@@ -108,8 +184,18 @@ export default function Chat() {
                             userStatus={userStatus}
                             onStatusToggle={handleStatusToggle}
                             onBack={handleBackToContacts}
+                            onClose={handleCloseChat}
+                            arrivalMessage={arrivalMessage}
+                            refreshContacts={fetchConversations}
                         />
                     )}
+                </div>
+                <div className="online-sidebar-wrapper">
+                    <OnlineSidebar
+                        onlineUsers={onlineUsers}
+                        contacts={allUsers}
+                        changeChat={handleChatChange}
+                    />
                 </div>
             </div>
         </Container>
@@ -127,36 +213,42 @@ const Container = styled.div`
   overflow: hidden;
 
   .container {
-    height: 90vh;
-    width: 90vw;
+    height: 94vh;
+    width: 95vw;
     background-color: var(--glass-bg);
     backdrop-filter: blur(12px);
     border: 1px solid var(--glass-border);
     border-radius: 1.5rem;
     display: grid;
-    grid-template-columns: 320px 1fr;
+    grid-template-columns: 320px 1fr 280px;
     overflow: hidden;
     position: relative;
     box-shadow: var(--shadow-lg);
 
-    .contacts-wrapper {
+    .contacts-wrapper, .chat-wrapper, .online-sidebar-wrapper {
         height: 100%;
         overflow: hidden;
     }
 
     .chat-wrapper {
-        height: 100%;
-        overflow: hidden;
         background-color: #0e1621;
     }
 
+    @media screen and (min-width: 1081px) and (max-width: 1440px) {
+      grid-template-columns: 300px 1fr 250px;
+      width: 98vw;
+    }
+
     @media screen and (min-width: 720px) and (max-width: 1080px) {
-      grid-template-columns: 35% 65%;
+      grid-template-columns: 320px 1fr;
       width: 95vw;
+      .online-sidebar-wrapper {
+        display: none;
+      }
     }
 
     @media screen and (max-width: 719px) {
-       display: block; /* Disable grid for stacking */
+       display: block; 
        width: 100vw;
        height: 100vh;
        border-radius: 0;
@@ -176,6 +268,10 @@ const Container = styled.div`
          z-index: 10;
          transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
          transform: translateX(100%);
+       }
+
+       .online-sidebar-wrapper {
+         display: none;
        }
 
        &.show-chat {
