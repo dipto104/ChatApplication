@@ -1,6 +1,6 @@
-# Snappy - Professional Real-time Chat Application
+# Chat - Professional Real-time Chat Application
 
-Snappy is a high-end, real-time messaging platform inspired by the professional aesthetics of **Telegram** and **Facebook Messenger**. Built with the modern MERN-like stack where data is powered by **PostgreSQL** and real-time interactions are handled by **Socket.io**.
+Chat is a high-end, real-time messaging platform inspired by the professional aesthetics of **Telegram** and **Facebook Messenger**. Built with the modern MERN-like stack where data is powered by **PostgreSQL** and real-time interactions are handled by **Socket.io**.
 
 ## ✨ Key Features
 
@@ -37,7 +37,7 @@ To run this project on another device or share it via GitHub, you must include t
 
 ### 1. Database Setup
 1.  Ensure **PostgreSQL** is installed and running.
-2.  Create a new database (e.g., `snappy_db`).
+2.  Create a new database (e.g., `mydb`).
 
 ### 2. Server Configuration
 Navigate to the `server/` directory:
@@ -45,7 +45,7 @@ Navigate to the `server/` directory:
 2.  **Initialize Environment**: Rename `.env.example` to `.env` and fill in your details:
     ```env
     PORT=5000
-    DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/snappy_db"
+    DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/mydb"
     ```
 3.  **Sync Database**: Run the Prisma migrations to create the tables:
     ```bash
@@ -69,6 +69,32 @@ Navigate to the `client/` directory:
 *   **Backend**: Node.js, Express, Socket.io.
 *   **Database**: PostgreSQL, Prisma ORM.
 *   **Authentication**: Custom logic with local storage persistence.
+
+---
+
+## 📂 File Structure & Functionality
+
+### Client Side (`/client/src`)
+
+#### **Pages**
+*   `Chat.jsx`: The layout engine. Handles desktop/mobile switching and initializes Socket.io connections.
+*   `Login.jsx` & `Register.jsx`: High-end auth screens with validation and secure state management.
+
+#### **Components**
+*   `ChatContainer.jsx`: The main messaging window. Manages message history display, auto-scrolling, and the chat header.
+*   `ChatInput.jsx`: The bottom toolbar. Contains the message input, emoji picker activation, and message submission logic.
+*   `Contacts.jsx`: The sidebar navigator. Renders the searchable list of contacts and your own profile at the bottom.
+*   `UserMenu.jsx`: The settings hub. A persistent dropdown in the header for activity status and account logout.
+*   `Welcome.jsx`: The landing view shown before you select a conversation.
+
+### Server Side (`/server`)
+
+*   `index.js`: The central "brain". Runs the Express API and manages real-time socket events (online tracking, message broadcasting).
+*   `prisma/schema.prisma`: The source of truth for your PostgreSQL database structure.
+*   `controllers/`:
+    *   `userController.js`: Logic for registration, login, and fetching the contact list.
+    *   `messageController.js`: Logic for saving messages to the DB and fetching chat history.
+*   `routes/`: API endpoint definitions that connect the frontend requests to the controllers.
 
 ---
 
