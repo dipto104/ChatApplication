@@ -2,6 +2,13 @@
 
 Chat is a high-end, real-time messaging platform inspired by the professional aesthetics of **Telegram** and **Facebook Messenger**. Built with the modern MERN-like stack where data is powered by **PostgreSQL** and real-time interactions are handled by **Socket.io**.
 
+## 📋 Prerequisites
+
+Before you begin, ensure you have the following installed on your target device:
+*   **Node.js**: Version 18.x or higher.
+*   **PostgreSQL**: A running instance (local or hosted).
+*   **Git**: To clone and manage your repository.
+
 ## ✨ Key Features
 
 *   **Soft Eye-Friendly Design**: A professional midnight-navy and charcoal palette (`#17212b`) designed for long-term readability and comfort.
