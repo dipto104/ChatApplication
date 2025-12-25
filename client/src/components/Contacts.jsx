@@ -1,12 +1,18 @@
 import React, { useState, useEffect } from "react";
 import styled from "styled-components";
 import Logo from "../assets/logo.svg";
+import { BsThreeDotsVertical } from "react-icons/bs";
+import { BiPowerOff, BiChevronDown } from "react-icons/bi";
+import { useNavigate } from "react-router-dom";
 
-export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, userStatus, onStatusToggle, isConversationList }) {
+export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, userStatus, onStatusToggle, isConversationList, onDeleteConversation, onDeleteForMe }) {
   const [currentUserName, setCurrentUserName] = useState(undefined);
   const [currentUserImage, setCurrentUserImage] = useState(undefined);
   const [currentSelected, setCurrentSelected] = useState(undefined);
   const [view, setView] = useState("recent"); // "recent" or "online"
+  const [menuVisible, setMenuVisible] = useState(null); // contact.id of open menu
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const data = JSON.parse(
@@ -17,6 +23,24 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
       setCurrentUserImage(data.avatarImage);
     }
   }, []);
+
+  useEffect(() => {
+    const handleGlobalClick = (e) => {
+      if (!e.target.closest(".contact-menu")) {
+        setMenuVisible(null);
+      }
+      if (!e.target.closest(".current-user")) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("click", handleGlobalClick);
+    return () => document.removeEventListener("click", handleGlobalClick);
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.clear();
+    navigate("/login");
+  };
 
   const changeCurrentChat = (contact) => {
     setCurrentSelected(contact.id);
@@ -31,23 +55,25 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
     <>
       {currentUserName && (
         <Container>
-          <div className="brand">
-            <img src={Logo} alt="logo" />
-            <h1 className="brand-name">chat</h1>
-          </div>
-          <div className="view-toggle">
-            <button
-              className={view === "recent" ? "active" : ""}
-              onClick={() => setView("recent")}
-            >
-              Recent
-            </button>
-            <button
-              className={view === "online" ? "active" : ""}
-              onClick={() => setView("online")}
-            >
-              Online
-            </button>
+          <div className="sidebar-header">
+            <div className="brand">
+              <img src={Logo} alt="logo" />
+              <h1 className="brand-name">chat</h1>
+            </div>
+            <div className="view-toggle">
+              <button
+                className={view === "recent" ? "active" : ""}
+                onClick={() => setView("recent")}
+              >
+                Recent
+              </button>
+              <button
+                className={view === "online" ? "active" : ""}
+                onClick={() => setView("online")}
+              >
+                Online
+              </button>
+            </div>
           </div>
           <div className="contacts">
             {view === "recent" ? (
@@ -84,6 +110,40 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
                     {isConversationList && contact.unreadCount > 0 && (
                       <div className="unread-badge">
                         {contact.unreadCount}
+                      </div>
+                    )}
+                    {isConversationList && (
+                      <div className="contact-menu">
+                        <BsThreeDotsVertical
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuVisible(menuVisible === contact.id ? null : contact.id);
+                          }}
+                        />
+                        {menuVisible === contact.id && (
+                          <div className="menu-dropdown">
+                            <p
+                              className="delete-me"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteForMe(contact.conversationId, contact.id);
+                                setMenuVisible(null);
+                              }}
+                            >
+                              Delete for me
+                            </p>
+                            <p
+                              className="delete-everyone"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteConversation(contact.conversationId, contact.id);
+                                setMenuVisible(null);
+                              }}
+                            >
+                              Delete for everyone
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -126,7 +186,7 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
               })()
             )}
           </div>
-          <div className="current-user">
+          <div className="current-user" onClick={(e) => { e.stopPropagation(); setUserMenuOpen(!userMenuOpen); }}>
             <div className="avatar">
               {currentUserImage ? (
                 <img
@@ -145,7 +205,22 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
                 <h2>{currentUserName}</h2>
                 <p className="my-status">{userStatus}</p>
               </div>
+              <BiChevronDown className={`chevron ${userMenuOpen ? "rotate" : ""}`} />
             </div>
+
+            {userMenuOpen && (
+              <div className="user-dropdown">
+                <div className="dropdown-item" onClick={(e) => { e.stopPropagation(); onStatusToggle(); setUserMenuOpen(false); }}>
+                  <div className={`status-toggle-dot ${userStatus === "online" ? "offline" : "online"}`}></div>
+                  <span>Switch to {userStatus === "online" ? "Offline" : "Online"}</span>
+                </div>
+                <div className="dropdown-divider"></div>
+                <div className="dropdown-item logout" onClick={(e) => { e.stopPropagation(); handleLogout(); }}>
+                  <BiPowerOff />
+                  <span>Logout</span>
+                </div>
+              </div>
+            )}
           </div>
         </Container>
       )}
@@ -155,15 +230,26 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
 
 const Container = styled.div`
   display: grid;
-  grid-template-rows: 5rem 1fr 6rem;
+  grid-template-rows: 5rem 1fr 5.5rem; /* Header, Contacts (1fr), User Profile */
   overflow: hidden;
   height: 100%;
   background-color: var(--bg-card);
   border-right: 1px solid var(--glass-border);
 
+  .sidebar-header {
+    display: contents; /* Keeps layout logic in parent Container for desktop compatibility if needed */
+  }
+
   @media screen and (max-width: 719px) {
     width: 100%;
-    grid-template-rows: 8rem 1fr 5.5rem; /* Increased top row for buttons */
+    grid-template-rows: auto 1fr 5rem; /* Let header size naturally, list takes rest */
+    
+    .sidebar-header {
+      display: flex;
+      flex-direction: column;
+      border-bottom: 1px solid var(--glass-border);
+      background-color: var(--bg-card);
+    }
   }
 
   .brand {
@@ -183,11 +269,12 @@ const Container = styled.div`
     }
     @media screen and (max-width: 719px) {
       gap: 0.5rem;
+      padding: 0.1rem 0; /* Bare minimum padding */
       img {
-        height: 2rem;
+        height: 1.2rem;
       }
       .brand-name {
-        font-size: 1.2rem;
+        font-size: 0.85rem;
       }
     }
   }
@@ -221,6 +308,11 @@ const Container = styled.div`
       align-items: center;
       transition: background-color 0.2s ease;
       
+      @media screen and (max-width: 719px) {
+        min-height: 4rem; /* Shorter items to see more on screen */
+        padding: 0.6rem 1rem;
+      }
+      
       .avatar {
         position: relative;
         img {
@@ -238,6 +330,12 @@ const Container = styled.div`
           color: white;
           font-weight: 600;
           font-size: 1.2rem;
+        }
+        @media screen and (max-width: 719px) {
+          img, .initial-avatar {
+             height: 2.8rem;
+             width: 2.8rem;
+          }
         }
         .status-dot {
           position: absolute;
@@ -257,6 +355,8 @@ const Container = styled.div`
       }
 
       .username {
+        flex: 1;
+        min-width: 0;
         h3 {
           color: var(--text-main);
           transition: color 0.3s ease;
@@ -270,6 +370,10 @@ const Container = styled.div`
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+        @media screen and (max-width: 719px) {
+          h3 { font-size: 0.95rem; }
+          .last-message { font-size: 0.8rem; }
         }
       }
       &:hover {
@@ -305,6 +409,61 @@ const Container = styled.div`
           font-weight: 600;
       }
     }
+
+    .contact-menu {
+      position: relative;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      svg {
+        color: var(--text-dim);
+        font-size: 1.1rem;
+        cursor: pointer;
+        &:hover {
+          color: white;
+        }
+      }
+      .menu-dropdown {
+        position: absolute;
+        top: 2rem;
+        right: 0;
+        background-color: var(--bg-dark);
+        border: 1px solid var(--glass-border);
+        border-radius: 0.5rem;
+        min-width: 150px;
+        z-index: 100;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        padding: 0.5rem 0;
+        animation: fadeIn 0.2s ease;
+        
+        p {
+          padding: 0.5rem 1rem;
+          font-size: 0.85rem;
+          margin: 0;
+          cursor: pointer;
+          
+          &.delete-me {
+            color: var(--text-main);
+          }
+          
+          &.delete-everyone {
+            color: #ef4444;
+          }
+
+          &:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+          }
+        }
+      }
+    }
+
+    .contact:hover .contact-menu {
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   .current-user {
@@ -315,6 +474,13 @@ const Container = styled.div`
     gap: 1.2rem;
     padding: 1rem;
     border-top: 1px solid var(--glass-border);
+    cursor: pointer;
+    position: relative;
+    transition: background-color 0.3s ease;
+
+    &:hover {
+      background-color: rgba(255, 255, 255, 0.05);
+    }
     
     .avatar {
       position: relative;
@@ -322,6 +488,18 @@ const Container = styled.div`
         height: 3.5rem;
         border-radius: 50%;
         border: 2px solid var(--primary-color);
+      }
+      .initial-avatar {
+          height: 3.5rem;
+          width: 3.5rem;
+          background-color: #3390ec;
+          border-radius: 50%;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          color: white;
+          font-weight: 600;
+          font-size: 1.2rem;
       }
       .status-dot {
         position: absolute;
@@ -343,11 +521,12 @@ const Container = styled.div`
 
     .user-details-wrapper {
         display: flex;
-        flex-direction: column;
-        gap: 0.1rem;
+        align-items: center;
+        gap: 0.5rem;
         flex: 1;
 
         .username {
+          flex: 1;
           h2 {
             color: var(--text-main);
             font-size: 1.1rem;
@@ -359,13 +538,88 @@ const Container = styled.div`
             text-transform: capitalize;
           }
         }
+
+        .chevron {
+          color: var(--text-dim);
+          font-size: 1.5rem;
+          transition: transform 0.3s ease;
+          &.rotate {
+            transform: rotate(180deg);
+          }
+        }
+    }
+
+    .user-dropdown {
+      position: absolute;
+      bottom: calc(100% + 10px);
+      left: 10px;
+      right: 10px;
+      background-color: var(--bg-card);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      border-radius: 1rem;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      padding: 0.5rem;
+      z-index: 1000;
+      animation: fadeIn 0.2s ease-out;
+
+      .dropdown-item {
+        padding: 0.8rem;
+        border-radius: 0.6rem;
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        color: var(--text-main);
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: background-color 0.2s ease;
+
+        &:hover {
+          background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        &.logout {
+          color: #ef4444;
+          &:hover {
+            background-color: rgba(239, 68, 68, 0.1);
+          }
+        }
+
+        .status-toggle-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          &.online { background-color: #22c55e; }
+          &.offline { background-color: #94a3b8; }
+        }
+
+        svg {
+          font-size: 1.2rem;
+        }
+      }
+
+      .dropdown-divider {
+        height: 1px;
+        background-color: var(--glass-border);
+        margin: 0.4rem;
+      }
     }
 
     @media screen and (max-width: 719px) {
-      padding: 1rem;
+      padding: 0.6rem 0.8rem; /* Slimmer current user area */
+      gap: 0.8rem;
       .username {
         h2 {
-          font-size: 1rem;
+          font-size: 0.9rem;
+        }
+        .my-status {
+          font-size: 0.7rem;
+        }
+      }
+      .avatar {
+        img, .initial-avatar {
+          height: 2.6rem;
+          width: 2.6rem;
         }
       }
     }
@@ -384,21 +638,32 @@ const Container = styled.div`
     display: none;
     @media screen and (max-width: 719px) {
       display: flex;
-      padding: 0 1rem 0.5rem;
+      padding: 0 1.2rem 0.4rem; /* Zero top padding */
       gap: 0.5rem;
+      justify-content: center;
+      
       button {
         flex: 1;
-        padding: 0.5rem;
+        max-width: 100px; 
+        padding: 0.15rem 0.4rem; /* Ultra-flat buttons */
         background-color: rgba(255, 255, 255, 0.05);
         border: 1px solid var(--glass-border);
         color: var(--text-dim);
-        border-radius: 0.5rem;
-        font-size: 0.8rem;
+        border-radius: 0.4rem; 
+        font-size: 0.7rem;
+        font-weight: 500;
         cursor: pointer;
+        transition: all 0.3s ease;
+        
         &.active {
           background-color: var(--primary-color);
           color: white;
           border-color: var(--primary-color);
+          box-shadow: 0 2px 8px rgba(51, 144, 236, 0.3);
+        }
+
+        &:active {
+          transform: scale(0.95);
         }
       }
     }

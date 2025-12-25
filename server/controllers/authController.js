@@ -86,6 +86,11 @@ module.exports.getActiveConversations = async (req, res, next) => {
                     },
                 },
                 messages: {
+                    where: {
+                        NOT: {
+                            deletedBy: { has: userId }
+                        }
+                    },
                     orderBy: {
                         createdAt: "desc",
                     },
@@ -97,26 +102,35 @@ module.exports.getActiveConversations = async (req, res, next) => {
             },
         });
 
-        const activeUsers = await Promise.all(conversations.map(async (convo) => {
+        const activeUsersData = await Promise.all(conversations.map(async (convo) => {
+            const visibleMessage = convo.messages[0];
+            if (!visibleMessage) return null; // No visible messages, this convo should be hidden
+
             const otherUser = convo.participants[0];
 
-            // Count unread messages from the other user in this conversation
+            // Count unread messages from the other user in this conversation that are NOT deleted by me
             const unreadCount = await prisma.message.count({
                 where: {
                     conversationId: convo.id,
                     senderId: otherUser.id,
                     status: { not: "READ" },
+                    NOT: {
+                        deletedBy: { has: userId }
+                    }
                 },
             });
 
             return {
                 ...otherUser,
                 conversationId: convo.id,
-                lastMessage: convo.messages[0]?.content || "",
-                lastMessageTime: convo.messages[0]?.createdAt || convo.updatedAt,
+                lastMessage: visibleMessage.content || "",
+                lastMessageTime: visibleMessage.createdAt || convo.updatedAt,
                 unreadCount: unreadCount,
             };
         }));
+
+        // Filter out nulls (hidden conversations)
+        const activeUsers = activeUsersData.filter(u => u !== null);
 
         return res.json(activeUsers);
     } catch (ex) {

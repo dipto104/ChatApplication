@@ -36,8 +36,8 @@ export default function ChatInput({ handleSendMsg }) {
           const response = await axios.post(uploadImageRoute, formData);
           const { filename } = response.data;
           if (filename) {
-            const fileUrl = `${host}/uploads/${filename}`;
-            handleSendMsg(msg, "IMAGE", fileUrl);
+            // filename is now "uploads/xyz.jpg" from server
+            handleSendMsg(msg, "IMAGE", filename);
           }
         } catch (error) {
           console.error("Image upload failed:", error);

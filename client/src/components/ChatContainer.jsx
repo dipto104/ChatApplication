@@ -1,16 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
 import styled from "styled-components";
 import ChatInput from "./ChatInput";
-import UserMenu from "./UserMenu";
 import { v4 as uuidv4 } from "uuid";
 import Logo from "../assets/logo.svg";
 import axios from "axios";
-import { sendMessageRoute, recieveMessageRoute, markAsReadRoute, unsendMessageRoute, removeMessageRoute, addReactionRoute, removeReactionRoute } from "../utils/APIRoutes";
+import { sendMessageRoute, recieveMessageRoute, markAsReadRoute, unsendMessageRoute, removeMessageRoute, deleteConversationRoute, addReactionRoute, removeReactionRoute, host } from "../utils/APIRoutes";
 import { IoArrowBack, IoClose } from "react-icons/io5";
 import { BsCheck, BsCheckAll, BsThreeDotsVertical } from "react-icons/bs";
 import { MdAddReaction } from "react-icons/md";
 
-export default function ChatContainer({ currentChat, socket, onlineUsers, onBack, onClose, currentUser, userStatus, onStatusToggle, arrivalMessage, refreshContacts }) {
+export default function ChatContainer({ currentChat, socket, onlineUsers, currentUser, userStatus, onStatusToggle, onBack, onClose, arrivalMessage, refreshContacts, onDeleteConversation }) {
   const [messages, setMessages] = useState([]);
   const [viewingImage, setViewingImage] = useState(null);
   const [zoom, setZoom] = useState(1);
@@ -172,13 +171,7 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, onBack
   useEffect(() => {
     if (socket.current) {
       socket.current.on("msg-unsend", (data) => {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === data.messageId
-              ? { ...m, isUnsent: true, message: "This message was unsent", messageType: "TEXT", fileUrl: null }
-              : m
-          )
-        );
+        setMessages((prev) => prev.filter((m) => m.id !== data.messageId));
       });
 
       socket.current.on("reaction-added", (data) => {
@@ -199,6 +192,14 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, onBack
               : m
           )
         );
+      });
+
+      socket.current.on("conversation-deleted", (data) => {
+        if (currentChat?.id === data.from) {
+          setMessages([]);
+          if (onClose) onClose();
+        }
+        if (refreshContacts) refreshContacts();
       });
     }
 
@@ -299,13 +300,7 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, onBack
   const handleUnsend = async (messageId) => {
     try {
       await axios.post(unsendMessageRoute, { messageId });
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId
-            ? { ...m, isUnsent: true, message: "This message was unsent", messageType: "TEXT", fileUrl: null }
-            : m
-        )
-      );
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
       socket.current.emit("unsend-msg", {
         messageId,
         to: currentChat.id,
@@ -326,6 +321,8 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, onBack
       console.error("Failed to remove message", err);
     }
   };
+
+
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -392,11 +389,6 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, onBack
           </div>
         </div>
         <div className="header-actions">
-          <UserMenu
-            currentUser={currentUser}
-            userStatus={userStatus}
-            onStatusToggle={onStatusToggle}
-          />
           <div className="close-button" onClick={onClose} title="Close Chat">
             <IoClose />
           </div>
@@ -416,26 +408,25 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, onBack
                 className={`message ${message.fromSelf ? "sended" : "recieved"
                   }`}
               >
-                <div className={`content ${message.isUnsent ? "unsent" : ""}`}>
-                  {!message.isUnsent && (
-                    <div className="message-options">
-                      <BsThreeDotsVertical
-                        onClick={() => setMsgMenuVisible(msgMenuVisible === message.id ? null : message.id)}
-                      />
-                      {msgMenuVisible === message.id && (
-                        <div className="options-dropdown">
-                          <p onClick={() => handleRemoveForMe(message.id)}>Remove for me</p>
-                          {message.fromSelf && (
-                            <p className="unsend" onClick={() => handleUnsend(message.id)}>Unsend for everyone</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                <div className="content">
+                  <div className="message-options">
+                    <BsThreeDotsVertical
+                      onClick={() => setMsgMenuVisible(msgMenuVisible === message.id ? null : message.id)}
+                    />
+                    {msgMenuVisible === message.id && (
+                      <div className="options-dropdown">
+                        <p onClick={() => handleRemoveForMe(message.id)}>Remove for me</p>
+                        {message.fromSelf && (
+                          <p className="unsend" onClick={() => handleUnsend(message.id)}>Unsend for everyone</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {message.messageType === "IMAGE" ? (
                     <div className="image-content">
                       <img
-                        src={message.fileUrl}
+                        src={message.fileUrl ? (message.fileUrl.startsWith('http') ? message.fileUrl : `/${message.fileUrl}`) : ''}
                         alt="sent-uploaded"
                         onLoad={() => {
                           // Only auto-scroll for new messages (not when loading history)
@@ -473,54 +464,52 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, onBack
                     )}
                   </div>
                   {/* Reaction Picker */}
-                  {!message.isUnsent && (
-                    <div
-                      className="reaction-trigger"
-                      onMouseEnter={() => setReactionPickerVisible(message.id)}
-                      onMouseLeave={() => {
-                        if (pinnedReactionMsgId !== message.id) {
-                          setReactionPickerVisible(null);
-                        }
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (pinnedReactionMsgId === message.id) {
-                          // Unpin
-                          setPinnedReactionMsgId(null);
-                        } else {
-                          // Pin
-                          setPinnedReactionMsgId(message.id);
-                          setReactionPickerVisible(message.id);
-                        }
-                      }}
-                    >
-                      <MdAddReaction />
-                      {reactionPickerVisible === message.id && (
-                        <div className="reaction-picker">
-                          {QUICK_REACTIONS.map((emoji) => {
-                            const existingReaction = message.reactions?.find(r => r.userId === currentUser.id);
-                            const isSelected = existingReaction?.emoji === emoji;
+                  <div
+                    className="reaction-trigger"
+                    onMouseEnter={() => setReactionPickerVisible(message.id)}
+                    onMouseLeave={() => {
+                      if (pinnedReactionMsgId !== message.id) {
+                        setReactionPickerVisible(null);
+                      }
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (pinnedReactionMsgId === message.id) {
+                        // Unpin
+                        setPinnedReactionMsgId(null);
+                      } else {
+                        // Pin
+                        setPinnedReactionMsgId(message.id);
+                        setReactionPickerVisible(message.id);
+                      }
+                    }}
+                  >
+                    <MdAddReaction />
+                    {reactionPickerVisible === message.id && (
+                      <div className="reaction-picker">
+                        {QUICK_REACTIONS.map((emoji) => {
+                          const existingReaction = message.reactions?.find(r => r.userId === currentUser.id);
+                          const isSelected = existingReaction?.emoji === emoji;
 
-                            return (
-                              <span
-                                key={emoji}
-                                className={`reaction-emoji ${isSelected ? "selected" : ""}`}
-                                onClick={() => {
-                                  if (isSelected) {
-                                    handleRemoveReaction(message.id);
-                                  } else {
-                                    handleAddReaction(message.id, emoji);
-                                  }
-                                }}
-                              >
-                                {emoji}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                          return (
+                            <span
+                              key={emoji}
+                              className={`reaction-emoji ${isSelected ? "selected" : ""}`}
+                              onClick={() => {
+                                if (isSelected) {
+                                  handleRemoveReaction(message.id);
+                                } else {
+                                  handleAddReaction(message.id, emoji);
+                                }
+                              }}
+                            >
+                              {emoji}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Reaction Display */}
@@ -564,26 +553,28 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, onBack
       </div>
       <ChatInput handleSendMsg={handleSendMsg} />
 
-      {viewingImage && (
-        <LightboxOverlay onClick={() => { setViewingImage(null); setZoom(1); }}>
-          <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={viewingImage}
-              alt="lightbox"
-              style={{ transform: `scale(${zoom})`, cursor: zoom > 1 ? "zoom-out" : "zoom-in" }}
-              onClick={() => setZoom(zoom === 1 ? 2 : 1)}
-            />
-            <button className="close-btn" onClick={() => { setViewingImage(null); setZoom(1); }}>
-              <IoClose />
-            </button>
-            <div className="zoom-controls">
-              <button onClick={() => setZoom(Math.max(1, zoom - 0.5))}>-</button>
-              <span>{Math.round(zoom * 100)}%</span>
-              <button onClick={() => setZoom(Math.min(3, zoom + 0.5))}>+</button>
+      {
+        viewingImage && (
+          <LightboxOverlay onClick={() => { setViewingImage(null); setZoom(1); }}>
+            <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+              <img
+                src={viewingImage}
+                alt="lightbox"
+                style={{ transform: `scale(${zoom})`, cursor: zoom > 1 ? "zoom-out" : "zoom-in" }}
+                onClick={() => setZoom(zoom === 1 ? 2 : 1)}
+              />
+              <button className="close-btn" onClick={() => { setViewingImage(null); setZoom(1); }}>
+                <IoClose />
+              </button>
+              <div className="zoom-controls">
+                <button onClick={() => setZoom(Math.max(1, zoom - 0.5))}>-</button>
+                <span>{Math.round(zoom * 100)}%</span>
+                <button onClick={() => setZoom(Math.min(3, zoom + 0.5))}>+</button>
+              </div>
             </div>
-          </div>
-        </LightboxOverlay>
-      )}
+          </LightboxOverlay>
+        )
+      }
     </Container>
   );
 }

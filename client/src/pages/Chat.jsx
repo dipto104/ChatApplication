@@ -3,7 +3,7 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import styled from "styled-components";
-import { allUsersRoute, activeConversationsRoute, host } from "../utils/APIRoutes";
+import { allUsersRoute, activeConversationsRoute, deleteConversationRoute, deleteConversationForMeRoute, host } from "../utils/APIRoutes";
 import ChatContainer from "../components/ChatContainer";
 import Contacts from "../components/Contacts";
 import Welcome from "../components/Welcome";
@@ -46,7 +46,9 @@ export default function Chat() {
 
     useEffect(() => {
         if (currentUser) {
-            socket.current = io(host);
+            socket.current = io({
+                transports: ["websocket"],
+            });
             socket.current.emit("add-user", currentUser.id);
             setUserStatus(currentUser.status || "online");
 
@@ -195,6 +197,61 @@ export default function Chat() {
         setShowChatOnMobile(false);
     };
 
+    const handleDeleteConversation = async (conversationId, targetUserId) => {
+        if (!conversationId) return;
+
+        const confirmDelete = window.confirm("Are you sure you want to delete this conversation for everyone? This action is permanent and will delete all messages and files.");
+
+        if (confirmDelete) {
+            try {
+                await axios.post(deleteConversationRoute, {
+                    conversationId: conversationId
+                });
+
+                // Notify other user
+                if (socket.current) {
+                    socket.current.emit("delete-conversation", {
+                        to: targetUserId,
+                        from: currentUser.id,
+                    });
+                }
+
+                // If the deleted chat is the one currently open, close it
+                if (currentChat?.id === targetUserId) {
+                    setCurrentChat(undefined);
+                    setShowChatOnMobile(false);
+                }
+
+                // Refresh the contact list
+                fetchConversations();
+            } catch (err) {
+                console.error("Failed to delete conversation", err);
+            }
+        }
+    };
+
+    const handleDeleteForMe = async (conversationId, targetUserId) => {
+        if (!conversationId) return;
+
+        try {
+            await axios.post(deleteConversationForMeRoute, {
+                conversationId: conversationId,
+                userId: currentUser.id
+            });
+
+            // If the deleted chat is the one currently open, close it
+            if (currentChat?.id === targetUserId) {
+                setCurrentChat(undefined);
+                setShowChatOnMobile(false);
+            }
+
+            // Refresh the contact list
+            fetchConversations();
+        } catch (err) {
+            console.error("Failed to delete conversation for me", err);
+        }
+    };
+
     return (
         <Container>
             <div className={`container ${showChatOnMobile ? 'show-chat' : 'show-contacts'}`}>
@@ -207,6 +264,8 @@ export default function Chat() {
                         userStatus={userStatus}
                         onStatusToggle={handleStatusToggle}
                         isConversationList={true}
+                        onDeleteConversation={handleDeleteConversation}
+                        onDeleteForMe={handleDeleteForMe}
                     />
                 </div>
                 <div className="chat-wrapper">
@@ -228,6 +287,7 @@ export default function Chat() {
                             onClose={handleCloseChat}
                             arrivalMessage={arrivalMessage}
                             refreshContacts={fetchConversations}
+                            onDeleteConversation={handleDeleteConversation}
                         />
                     )}
                 </div>
@@ -312,7 +372,7 @@ const Container = styled.div`
        }
 
        .online-sidebar-wrapper {
-         display: none; /* Still hidden by default, but we can potentially add a toggle */
+         display: none;
        }
 
        &.show-chat {

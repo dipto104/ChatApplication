@@ -3,10 +3,7 @@ import styled from "styled-components";
 import Logo from "../assets/logo.svg";
 
 
-import UserMenu from "./UserMenu";
-
-
-export default function Welcome({ currentUser, userStatus, onStatusToggle }) {
+export default function Welcome({ currentUser }) {
   const [userName, setUserName] = useState("");
   useEffect(() => {
     if (currentUser) {
@@ -16,13 +13,6 @@ export default function Welcome({ currentUser, userStatus, onStatusToggle }) {
 
   return (
     <Container>
-      <div className="welcome-header">
-        <UserMenu
-          currentUser={currentUser}
-          userStatus={userStatus}
-          onStatusToggle={onStatusToggle}
-        />
-      </div>
       <div className="welcome-content">
         <img src={Logo} alt="Welcome" />
         <h1>
@@ -41,21 +31,6 @@ const Container = styled.div`
   width: 100%;
   color: var(--text-main);
   background-color: #17212b;
-
-  .welcome-header {
-      height: 5rem;
-      width: 100%;
-      display: flex;
-      justify-content: flex-end;
-      align-items: center;
-      padding: 0 2rem;
-      border-bottom: 1px solid var(--glass-border);
-      
-      @media screen and (max-width: 719px) {
-        padding: 0 1rem;
-        height: 4.5rem;
-      }
-  }
 
   .welcome-content {
       flex: 1;

@@ -14,7 +14,7 @@ const messageRoutes = require("./routes/messagesRoutes");
 
 app.use(
   cors({
-    origin: ["http://localhost:5471", "http://localhost:5173", "https://biblical-hints-vital-pipeline.trycloudflare.com"],
+    origin: true, // Allow any origin that connects (dynamic)
     credentials: true,
   })
 );
@@ -31,7 +31,7 @@ const server = app.listen(PORT, () => {
 
 const io = socketIo(server, {
   cors: {
-    origin: ["http://localhost:5173", "http://localhost:5174", "http://localhost:5471", "https://biblical-hints-vital-pipeline.trycloudflare.com"],
+    origin: true, // Allow any origin
     credentials: true,
   },
 });
@@ -93,6 +93,15 @@ io.on("connection", (socket) => {
     if (readerUserSocket) {
       socket.to(readerUserSocket).emit("msg-read", {
         from: data.from, // who read the message
+      });
+    }
+  });
+
+  socket.on("delete-conversation", (data) => {
+    const receiverSocket = onlineUsers.get(data.to.toString());
+    if (receiverSocket) {
+      socket.to(receiverSocket).emit("conversation-deleted", {
+        from: data.from,
       });
     }
   });

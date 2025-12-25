@@ -1,4 +1,6 @@
 const prisma = require("../db/prisma");
+const fs = require("fs");
+const path = require("path");
 
 module.exports.addMessage = async (req, res, next) => {
     try {
@@ -111,11 +113,10 @@ module.exports.getAllMessages = async (req, res, next) => {
             return {
                 id: msg.id,
                 fromSelf: msg.senderId === senderId,
-                message: msg.isUnsent ? "This message was unsent" : msg.content,
-                messageType: msg.isUnsent ? "TEXT" : msg.messageType,
-                fileUrl: msg.isUnsent ? null : (msg.fileUrl ? msg.fileUrl.replace("https://files-boc-wider-computer.trycloudflare.com", "http://localhost:5000") : null),
+                message: msg.content,
+                messageType: msg.messageType,
+                fileUrl: msg.fileUrl, // Return raw relative path
                 status: msg.status,
-                isUnsent: msg.isUnsent,
                 reactions: msg.reactions || [],
                 time: msg.createdAt,
             };
@@ -165,13 +166,27 @@ module.exports.markAsRead = async (req, res, next) => {
 module.exports.unsendMessage = async (req, res, next) => {
     try {
         const { messageId } = req.body;
-        const msg = await prisma.message.update({
-            where: { id: parseInt(messageId) },
-            data: {
-                isUnsent: true,
-            },
+        const id = parseInt(messageId);
+
+        // 1. Delete associated reactions first to avoid foreign key violations
+        await prisma.reaction.deleteMany({
+            where: { messageId: id },
         });
-        return res.json({ msg: "Message unsent successfully", data: msg });
+
+        // 2. Delete the message itself
+        const msg = await prisma.message.delete({
+            where: { id: id },
+        });
+
+        // 3. Delete the physical file if it exists
+        if (msg.fileUrl && msg.fileUrl.startsWith("uploads/")) {
+            const filePath = path.join(__dirname, "..", msg.fileUrl);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        }
+
+        return res.json({ msg: "Message deleted successfully", data: msg });
     } catch (ex) {
         next(ex);
     }
@@ -196,6 +211,84 @@ module.exports.removeMessageForMe = async (req, res, next) => {
         });
 
         return res.json({ msg: "Message removed for you" });
+    } catch (ex) {
+        next(ex);
+    }
+};
+
+module.exports.deleteConversation = async (req, res, next) => {
+    try {
+        const { conversationId } = req.body;
+        const convoId = parseInt(conversationId);
+
+        // 1. Get all messages in this conversation to find files to delete
+        const messages = await prisma.message.findMany({
+            where: { conversationId: convoId },
+            select: { id: true, fileUrl: true },
+        });
+
+        const messageIds = messages.map((m) => m.id);
+
+        // 2. Delete physical files from disk
+        messages.forEach((msg) => {
+            if (msg.fileUrl && msg.fileUrl.startsWith("uploads/")) {
+                const filePath = path.join(__dirname, "..", msg.fileUrl);
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
+            }
+        });
+
+        // 3. Delete all reactions, messages, and the conversation using a transaction
+        await prisma.$transaction([
+            prisma.reaction.deleteMany({
+                where: { messageId: { in: messageIds } },
+            }),
+            prisma.message.deleteMany({
+                where: { conversationId: convoId },
+            }),
+            prisma.conversation.delete({
+                where: { id: convoId },
+            }),
+        ]);
+
+        return res.json({ msg: "Conversation deleted for everyone successfully" });
+    } catch (ex) {
+        next(ex);
+    }
+};
+
+module.exports.deleteConversationForMe = async (req, res, next) => {
+    try {
+        const { conversationId, userId } = req.body;
+        const convoId = parseInt(conversationId);
+        const uId = parseInt(userId);
+
+        // 1. Get all messages in this conversation that aren't already deleted by this user
+        const messages = await prisma.message.findMany({
+            where: {
+                conversationId: convoId,
+                NOT: {
+                    deletedBy: { has: uId }
+                }
+            },
+            select: { id: true, deletedBy: true }
+        });
+
+        // 2. Update each message to include uId in deletedBy
+        // Prisma updateMany doesn't support array push well, so we do it in a transaction or loop
+        await prisma.$transaction(
+            messages.map((msg) =>
+                prisma.message.update({
+                    where: { id: msg.id },
+                    data: {
+                        deletedBy: { set: [...msg.deletedBy, uId] }
+                    }
+                })
+            )
+        );
+
+        return res.json({ msg: "Conversation deleted for you" });
     } catch (ex) {
         next(ex);
     }
