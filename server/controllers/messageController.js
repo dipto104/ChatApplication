@@ -2,14 +2,16 @@ const prisma = require("../db/prisma");
 
 module.exports.addMessage = async (req, res, next) => {
     try {
-        const { from, to, message } = req.body;
+        const { from, to, message, messageType, fileUrl } = req.body;
+        const senderId = parseInt(from);
+        const receiverId = parseInt(to);
 
         // 1. Find or create the conversation between the two users
         let conversation = await prisma.conversation.findFirst({
             where: {
                 AND: [
-                    { participants: { some: { id: from } } },
-                    { participants: { some: { id: to } } },
+                    { participants: { some: { id: senderId } } },
+                    { participants: { some: { id: receiverId } } },
                 ],
             },
         });
@@ -18,7 +20,7 @@ module.exports.addMessage = async (req, res, next) => {
             conversation = await prisma.conversation.create({
                 data: {
                     participants: {
-                        connect: [{ id: from }, { id: to }],
+                        connect: [{ id: senderId }, { id: receiverId }],
                     },
                 },
             });
@@ -30,8 +32,10 @@ module.exports.addMessage = async (req, res, next) => {
 
         const data = await prisma.message.create({
             data: {
-                content: message,
-                sender: { connect: { id: from } },
+                content: message || "",
+                messageType: messageType || "TEXT",
+                fileUrl: fileUrl || null,
+                sender: { connect: { id: senderId } },
                 conversation: { connect: { id: conversation.id } },
                 status: initialStatus,
             },
@@ -52,22 +56,17 @@ module.exports.addMessage = async (req, res, next) => {
 
 module.exports.getAllMessages = async (req, res, next) => {
     try {
-        const { from, to } = req.body;
+        const { from, to, before, limit = 20 } = req.body;
+        const senderId = parseInt(from);
+        const receiverId = parseInt(to);
 
         // 1. Find the conversation between the two users
         const conversation = await prisma.conversation.findFirst({
             where: {
                 AND: [
-                    { participants: { some: { id: from } } },
-                    { participants: { some: { id: to } } },
+                    { participants: { some: { id: senderId } } },
+                    { participants: { some: { id: receiverId } } },
                 ],
-            },
-            include: {
-                messages: {
-                    orderBy: {
-                        createdAt: "asc",
-                    },
-                },
             },
         });
 
@@ -75,15 +74,53 @@ module.exports.getAllMessages = async (req, res, next) => {
             return res.json([]);
         }
 
-        const projectedMessages = conversation.messages.map((msg) => {
+        // 2. Fetch paginated messages with reactions
+        const messages = await prisma.message.findMany({
+            where: {
+                conversationId: conversation.id,
+                NOT: {
+                    deletedBy: {
+                        has: senderId,
+                    },
+                },
+                ...(before && {
+                    createdAt: {
+                        lt: new Date(before),
+                    },
+                }),
+            },
+            include: {
+                reactions: {
+                    include: {
+                        user: {
+                            select: {
+                                id: true,
+                                username: true,
+                            },
+                        },
+                    },
+                },
+            },
+            take: parseInt(limit),
+            orderBy: {
+                createdAt: "desc",
+            },
+        });
+
+        const projectedMessages = messages.reverse().map((msg) => {
             return {
                 id: msg.id,
-                fromSelf: msg.senderId === from,
-                message: msg.content,
+                fromSelf: msg.senderId === senderId,
+                message: msg.isUnsent ? "This message was unsent" : msg.content,
+                messageType: msg.isUnsent ? "TEXT" : msg.messageType,
+                fileUrl: msg.isUnsent ? null : (msg.fileUrl ? msg.fileUrl.replace("https://files-boc-wider-computer.trycloudflare.com", "http://localhost:5000") : null),
                 status: msg.status,
+                isUnsent: msg.isUnsent,
+                reactions: msg.reactions || [],
                 time: msg.createdAt,
             };
         });
+
         res.json(projectedMessages);
     } catch (ex) {
         next(ex);
@@ -121,6 +158,44 @@ module.exports.markAsRead = async (req, res, next) => {
             });
         }
         return res.json({ msg: "Messages marked as read" });
+    } catch (ex) {
+        next(ex);
+    }
+};
+module.exports.unsendMessage = async (req, res, next) => {
+    try {
+        const { messageId } = req.body;
+        const msg = await prisma.message.update({
+            where: { id: parseInt(messageId) },
+            data: {
+                isUnsent: true,
+            },
+        });
+        return res.json({ msg: "Message unsent successfully", data: msg });
+    } catch (ex) {
+        next(ex);
+    }
+};
+
+module.exports.removeMessageForMe = async (req, res, next) => {
+    try {
+        const { messageId, userId } = req.body;
+        const msg = await prisma.message.findUnique({
+            where: { id: parseInt(messageId) },
+        });
+
+        if (!msg) return res.status(404).json({ msg: "Message not found" });
+
+        const updatedDeletedBy = [...msg.deletedBy, parseInt(userId)];
+
+        await prisma.message.update({
+            where: { id: parseInt(messageId) },
+            data: {
+                deletedBy: { set: updatedDeletedBy },
+            },
+        });
+
+        return res.json({ msg: "Message removed for you" });
     } catch (ex) {
         next(ex);
     }

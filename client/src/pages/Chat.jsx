@@ -12,7 +12,9 @@ import OnlineSidebar from "../components/OnlineSidebar";
 export default function Chat() {
     const navigate = useNavigate();
     const socket = useRef();
+    const currentChatRef = useRef();
     const [contacts, setContacts] = useState([]); // This will now represent "Active Conversations"
+    const contactsRef = useRef(contacts); // Ref to access latest contacts in socket listeners
     const [allUsers, setAllUsers] = useState([]); // This will represent "All Known Users" for online status
     const [currentChat, setCurrentChat] = useState(undefined);
     const [currentUser, setCurrentUser] = useState(undefined);
@@ -38,7 +40,6 @@ export default function Chat() {
 
     const [showChatOnMobile, setShowChatOnMobile] = useState(false);
 
-    const currentChatRef = useRef();
     useEffect(() => {
         currentChatRef.current = currentChat;
     }, [currentChat]);
@@ -57,27 +58,39 @@ export default function Chat() {
                 setArrivalMessage({
                     from: data.from,
                     message: data.msg,
+                    messageType: data.messageType,
+                    fileUrl: data.fileUrl,
                     time: new Date()
                 });
 
-                setContacts((prev) => {
-                    const updatedContacts = prev.map((contact) => {
-                        if (contact.id === data.from) {
-                            return {
-                                ...contact,
-                                lastMessage: data.msg,
-                                unreadCount: currentChatRef.current?.id === data.from ? 0 : (contact.unreadCount || 0) + 1,
-                            };
-                        }
-                        return contact;
-                    });
+                // Check if the sender is already in our contacts list
+                // Use loose equality to handle string/number mismatch possibilities
+                const isKnownContact = contactsRef.current.some(c => c.id == data.from);
 
-                    return updatedContacts.sort((a, b) => {
-                        if (a.id === data.from) return -1;
-                        if (b.id === data.from) return 1;
-                        return 0;
+                if (!isKnownContact) {
+                    // New conversation started! Fetch fresh list from server to get user details
+                    fetchConversations();
+                } else {
+                    // Existing conversation, update optimistically
+                    setContacts((prev) => {
+                        const updatedContacts = prev.map((contact) => {
+                            if (contact.id === data.from) {
+                                return {
+                                    ...contact,
+                                    lastMessage: data.msg,
+                                    unreadCount: currentChatRef.current?.id === data.from ? 0 : (contact.unreadCount || 0) + 1,
+                                };
+                            }
+                            return contact;
+                        });
+
+                        return updatedContacts.sort((a, b) => {
+                            if (a.id === data.from) return -1;
+                            if (b.id === data.from) return 1;
+                            return 0;
+                        });
                     });
-                });
+                }
             });
 
             socket.current.on("msg-delivered", (data) => {
@@ -116,7 +129,8 @@ export default function Chat() {
 
     const fetchConversations = async () => {
         if (currentUser) {
-            const data = await axios.get(`${activeConversationsRoute}/${currentUser.id}`);
+            // Add timestamp to prevent caching
+            const data = await axios.get(`${activeConversationsRoute}/${currentUser.id}?t=${Date.now()}`);
             setContacts(data.data);
         }
     };
@@ -125,6 +139,11 @@ export default function Chat() {
     useEffect(() => {
         fetchConversations();
     }, [currentUser]); // Re-fetch when user logs in or contacts need refresh
+
+    // Sync contactsRef with state
+    useEffect(() => {
+        contactsRef.current = contacts;
+    }, [contacts]);
 
     // Fetch All Users (Right Sidebar / Discovery)
     useEffect(() => {
@@ -136,6 +155,26 @@ export default function Chat() {
         }
         fetchAllUsers();
     }, [currentUser]);
+
+    // Sync Online Users with All Users Directory
+    // If a new user comes online who wasn't in our initial fetch, re-fetch the directory.
+    useEffect(() => {
+        const checkForNewUsers = async () => {
+            if (!currentUser || !allUsers || allUsers.length === 0) return;
+
+            const knownUserIds = new Set(allUsers.map(u => u.id));
+            const hasUnknownOnlineUser = onlineUsers.some(onlineId =>
+                !knownUserIds.has(onlineId) && onlineId !== currentUser.id
+            );
+
+            if (hasUnknownOnlineUser) {
+                console.log("New online user detected, refreshing user list...");
+                const data = await axios.get(`${allUsersRoute}/${currentUser.id}`);
+                setAllUsers(data.data);
+            }
+        };
+        checkForNewUsers();
+    }, [onlineUsers, allUsers, currentUser]);
 
     const handleChatChange = (chat) => {
         setCurrentChat(chat);
@@ -153,6 +192,7 @@ export default function Chat() {
 
     const handleCloseChat = () => {
         setCurrentChat(undefined);
+        setShowChatOnMobile(false);
     };
 
     return (
@@ -161,6 +201,7 @@ export default function Chat() {
                 <div className="contacts-wrapper">
                     <Contacts
                         contacts={contacts}
+                        allUsers={allUsers}
                         changeChat={handleChatChange}
                         onlineUsers={onlineUsers}
                         userStatus={userStatus}
@@ -203,7 +244,7 @@ export default function Chat() {
 }
 
 const Container = styled.div`
-  height: 100vh;
+  height: 100dvh;
   width: 100vw;
   display: flex;
   flex-direction: column;
@@ -213,7 +254,7 @@ const Container = styled.div`
   overflow: hidden;
 
   .container {
-    height: 94vh;
+    height: 94dvh;
     width: 95vw;
     background-color: var(--glass-bg);
     backdrop-filter: blur(12px);
@@ -240,43 +281,48 @@ const Container = styled.div`
     }
 
     @media screen and (min-width: 720px) and (max-width: 1080px) {
-      grid-template-columns: 320px 1fr;
-      width: 95vw;
-      .online-sidebar-wrapper {
-        display: none;
-      }
+      grid-template-columns: 300px 1fr 240px;
+      width: 98vw;
     }
 
     @media screen and (max-width: 719px) {
-       display: block; 
+       display: flex;
+       flex-direction: column;
        width: 100vw;
-       height: 100vh;
+       height: 100dvh;
        border-radius: 0;
        border: none;
 
        .contacts-wrapper {
          width: 100%;
          height: 100%;
+         transition: opacity 0.3s ease;
        }
 
        .chat-wrapper {
-         position: absolute;
+         position: fixed;
          top: 0;
          left: 0;
-         width: 100%;
-         height: 100%;
-         z-index: 10;
-         transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+         width: 100vw;
+         height: 100dvh;
+         z-index: 100;
+         transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.3s;
          transform: translateX(100%);
+         visibility: hidden;
        }
 
        .online-sidebar-wrapper {
-         display: none;
+         display: none; /* Still hidden by default, but we can potentially add a toggle */
        }
 
        &.show-chat {
+         .contacts-wrapper {
+           opacity: 0;
+           pointer-events: none;
+         }
          .chat-wrapper {
            transform: translateX(0);
+           visibility: visible;
          }
        }
     }

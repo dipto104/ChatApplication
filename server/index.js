@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const socketIo = require("socket.io");
 const dotenv = require("dotenv");
 
@@ -11,8 +12,14 @@ const PORT = process.env.PORT || 5000;
 const authRoutes = require("./routes/authRoutes");
 const messageRoutes = require("./routes/messagesRoutes");
 
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:5471", "http://localhost:5173", "https://biblical-hints-vital-pipeline.trycloudflare.com"],
+    credentials: true,
+  })
+);
 app.use(express.json());
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
@@ -24,7 +31,7 @@ const server = app.listen(PORT, () => {
 
 const io = socketIo(server, {
   cors: {
-    origin: ["http://localhost:5173", "http://localhost:5174"],
+    origin: ["http://localhost:5173", "http://localhost:5174", "http://localhost:5471", "https://biblical-hints-vital-pipeline.trycloudflare.com"],
     credentials: true,
   },
 });
@@ -37,20 +44,23 @@ io.on("connection", (socket) => {
   global.chatSocket = socket;
 
   socket.on("add-user", async (userId) => {
-    onlineUsers.set(userId, socket.id);
+    if (!userId) return;
+    onlineUsers.set(userId.toString(), socket.id);
     await broadcastOnlineUsers();
   });
 
   socket.on("send-msg", async (data) => {
-    const sendUserSocket = onlineUsers.get(data.to);
+    const sendUserSocket = onlineUsers.get(data.to.toString());
     if (sendUserSocket) {
       socket.to(sendUserSocket).emit("msg-recieve", {
         msg: data.msg,
-        from: data.from
+        from: data.from,
+        messageType: data.messageType,
+        fileUrl: data.fileUrl,
       });
       // Acknowledgment for Delivery
       socket.emit("msg-delivered", {
-        to: data.from, // send back to original sender
+        to: data.from.toString(), // send back to original sender
         from: data.to,
       });
 
@@ -59,7 +69,7 @@ io.on("connection", (socket) => {
         where: {
           senderId: data.from,
           conversation: {
-            participants: { some: { id: data.to } }
+            participants: { some: { id: parseInt(data.to) } }
           },
           status: "SENT",
         },
@@ -68,11 +78,43 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("unsend-msg", (data) => {
+    const receiverSocket = onlineUsers.get(data.to.toString());
+    if (receiverSocket) {
+      socket.to(receiverSocket).emit("msg-unsend", {
+        messageId: data.messageId,
+        from: data.from,
+      });
+    }
+  });
+
   socket.on("read-msg", (data) => {
-    const readerUserSocket = onlineUsers.get(data.to); // Send to the person who sent the original message
+    const readerUserSocket = onlineUsers.get(data.to.toString()); // Send to the person who sent the original message
     if (readerUserSocket) {
       socket.to(readerUserSocket).emit("msg-read", {
         from: data.from, // who read the message
+      });
+    }
+  });
+
+  socket.on("add-reaction", (data) => {
+    const receiverSocket = onlineUsers.get(data.to.toString());
+    if (receiverSocket) {
+      socket.to(receiverSocket).emit("reaction-added", {
+        messageId: data.messageId,
+        reaction: data.reaction,
+        from: data.from,
+      });
+    }
+  });
+
+  socket.on("remove-reaction", (data) => {
+    const receiverSocket = onlineUsers.get(data.to.toString());
+    if (receiverSocket) {
+      socket.to(receiverSocket).emit("reaction-removed", {
+        messageId: data.messageId,
+        userId: data.userId,
+        from: data.from,
       });
     }
   });

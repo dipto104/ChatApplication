@@ -2,10 +2,11 @@ import React, { useState, useEffect } from "react";
 import styled from "styled-components";
 import Logo from "../assets/logo.svg";
 
-export default function Contacts({ contacts, changeChat, onlineUsers, userStatus, onStatusToggle, isConversationList }) {
+export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, userStatus, onStatusToggle, isConversationList }) {
   const [currentUserName, setCurrentUserName] = useState(undefined);
   const [currentUserImage, setCurrentUserImage] = useState(undefined);
   const [currentSelected, setCurrentSelected] = useState(undefined);
+  const [view, setView] = useState("recent"); // "recent" or "online"
 
   useEffect(() => {
     const data = JSON.parse(
@@ -34,45 +35,96 @@ export default function Contacts({ contacts, changeChat, onlineUsers, userStatus
             <img src={Logo} alt="logo" />
             <h1 className="brand-name">chat</h1>
           </div>
+          <div className="view-toggle">
+            <button
+              className={view === "recent" ? "active" : ""}
+              onClick={() => setView("recent")}
+            >
+              Recent
+            </button>
+            <button
+              className={view === "online" ? "active" : ""}
+              onClick={() => setView("online")}
+            >
+              Online
+            </button>
+          </div>
           <div className="contacts">
-            {contacts.map((contact, index) => {
-              return (
-                <div
-                  key={contact.id}
-                  className={`contact ${contact.id === currentSelected ? "selected" : ""}`}
-                  onClick={() => changeCurrentChat(contact)}
-                >
-                  <div className="avatar">
-                    {contact.avatarImage ? (
-                      <img
-                        src={`data:image/svg+xml;base64,${contact.avatarImage}`}
-                        alt=""
-                      />
-                    ) : (
-                      <div className="initial-avatar">
-                        {contact.username[0].toUpperCase()}
+            {view === "recent" ? (
+              contacts.map((contact, index) => {
+                return (
+                  <div
+                    key={contact.id}
+                    className={`contact ${contact.id === currentSelected ? "selected" : ""}`}
+                    onClick={() => changeCurrentChat(contact)}
+                  >
+                    <div className="avatar">
+                      {contact.avatarImage ? (
+                        <img
+                          src={`data:image/svg+xml;base64,${contact.avatarImage}`}
+                          alt=""
+                        />
+                      ) : (
+                        <div className="initial-avatar">
+                          {contact.username[0].toUpperCase()}
+                        </div>
+                      )}
+                      <div className={`status-dot ${isUserOnline(contact.id) ? "online" : "offline"}`}></div>
+                    </div>
+                    <div className="username">
+                      <h3>{contact.username}</h3>
+                      {isConversationList && contact.lastMessage && (
+                        <p className="last-message">
+                          {contact.lastMessage.length > 25
+                            ? contact.lastMessage.substring(0, 25) + "..."
+                            : contact.lastMessage}
+                        </p>
+                      )}
+                    </div>
+                    {isConversationList && contact.unreadCount > 0 && (
+                      <div className="unread-badge">
+                        {contact.unreadCount}
                       </div>
                     )}
-                    <div className={`status-dot ${isUserOnline(contact.id) ? "online" : "offline"}`}></div>
                   </div>
-                  <div className="username">
-                    <h3>{contact.username}</h3>
-                    {isConversationList && contact.lastMessage && (
-                      <p className="last-message">
-                        {contact.lastMessage.length > 25
-                          ? contact.lastMessage.substring(0, 25) + "..."
-                          : contact.lastMessage}
-                      </p>
-                    )}
-                  </div>
-                  {isConversationList && contact.unreadCount > 0 && (
-                    <div className="unread-badge">
-                      {contact.unreadCount}
+                );
+              })
+            ) : (
+              (() => {
+                const usersToFilter = (allUsers && allUsers.length > 0) ? allUsers : contacts;
+                const onlineList = usersToFilter.filter(c => onlineUsers.includes(c.id));
+
+                if (onlineList.length === 0) {
+                  return <div className="no-online-mobile">No one is online</div>;
+                }
+
+                return onlineList.map((contact) => (
+                  <div
+                    key={contact.id}
+                    className={`contact ${contact.id === currentSelected ? "selected" : ""}`}
+                    onClick={() => changeCurrentChat(contact)}
+                  >
+                    <div className="avatar">
+                      {contact.avatarImage ? (
+                        <img
+                          src={`data:image/svg+xml;base64,${contact.avatarImage}`}
+                          alt=""
+                        />
+                      ) : (
+                        <div className="initial-avatar">
+                          {contact.username[0].toUpperCase()}
+                        </div>
+                      )}
+                      <div className="status-dot online"></div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                    <div className="username">
+                      <h3>{contact.username}</h3>
+                      <p className="last-message">Active now</p>
+                    </div>
+                  </div>
+                ));
+              })()
+            )}
           </div>
           <div className="current-user">
             <div className="avatar">
@@ -111,7 +163,7 @@ const Container = styled.div`
 
   @media screen and (max-width: 719px) {
     width: 100%;
-    grid-template-rows: 4rem 1fr 6rem;
+    grid-template-rows: 8rem 1fr 5.5rem; /* Increased top row for buttons */
   }
 
   .brand {
@@ -326,5 +378,36 @@ const Container = styled.div`
         }
       }
     }
+  }
+
+  .view-toggle {
+    display: none;
+    @media screen and (max-width: 719px) {
+      display: flex;
+      padding: 0 1rem 0.5rem;
+      gap: 0.5rem;
+      button {
+        flex: 1;
+        padding: 0.5rem;
+        background-color: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--glass-border);
+        color: var(--text-dim);
+        border-radius: 0.5rem;
+        font-size: 0.8rem;
+        cursor: pointer;
+        &.active {
+          background-color: var(--primary-color);
+          color: white;
+          border-color: var(--primary-color);
+        }
+      }
+    }
+  }
+
+  .no-online-mobile {
+      color: var(--text-dim);
+      text-align: center;
+      padding: 2rem;
+      font-size: 0.9rem;
   }
 `;

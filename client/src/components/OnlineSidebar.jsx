@@ -2,52 +2,52 @@ import React from "react";
 import styled from "styled-components";
 
 export default function OnlineSidebar({ onlineUsers, contacts, changeChat }) {
-    // Filter contacts to only show those who are online
-    const onlineContacts = contacts.filter((contact) =>
-        onlineUsers.includes(contact.id)
-    );
+  // Filter contacts to only show those who are online
+  const onlineContacts = contacts.filter((contact) =>
+    onlineUsers.includes(contact.id)
+  );
 
-    return (
-        <Container>
-            <div className="header">
-                <h3>Online Users</h3>
-                <div className="count">{onlineContacts.length}</div>
-            </div>
-            <div className="online-list">
-                {onlineContacts.length > 0 ? (
-                    onlineContacts.map((contact) => (
-                        <div
-                            key={contact.id}
-                            className="online-user"
-                            onClick={() => changeChat(contact)}
-                        >
-                            <div className="avatar">
-                                {contact.avatarImage ? (
-                                    <img
-                                        src={`data:image/svg+xml;base64,${contact.avatarImage}`}
-                                        alt=""
-                                    />
-                                ) : (
-                                    <div className="initial-avatar">
-                                        {contact.username[0].toUpperCase()}
-                                    </div>
-                                )}
-                                <div className="status-dot online"></div>
-                            </div>
-                            <div className="username">
-                                <h3>{contact.username}</h3>
-                                <p>Active now</p>
-                            </div>
-                        </div>
-                    ))
+  return (
+    <Container>
+      <div className="header">
+        <h3>Online Users</h3>
+        <div className="count">{onlineContacts.length}</div>
+      </div>
+      <div className="online-list">
+        {onlineContacts.length > 0 ? (
+          onlineContacts.map((contact) => (
+            <div
+              key={contact.id}
+              className="online-user"
+              onClick={() => changeChat(contact)}
+            >
+              <div className="avatar">
+                {contact.avatarImage ? (
+                  <img
+                    src={`data:image/svg+xml;base64,${contact.avatarImage}`}
+                    alt=""
+                  />
                 ) : (
-                    <div className="no-online">
-                        <p>No one is online right now</p>
-                    </div>
+                  <div className="initial-avatar">
+                    {contact.username[0].toUpperCase()}
+                  </div>
                 )}
+                <div className="status-dot online"></div>
+              </div>
+              <div className="username">
+                <h3>{contact.username}</h3>
+                <p>Active now</p>
+              </div>
             </div>
-        </Container>
-    );
+          ))
+        ) : (
+          <div className="no-online">
+            <p>No one is online right now</p>
+          </div>
+        )}
+      </div>
+    </Container>
+  );
 }
 
 const Container = styled.div`
@@ -165,7 +165,7 @@ const Container = styled.div`
     }
   }
 
-  @media screen and (max-width: 1080px) {
+  @media screen and (max-width: 720px) {
     display: none;
   }
 `;
