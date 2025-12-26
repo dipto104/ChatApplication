@@ -128,6 +128,48 @@ io.on("connection", (socket) => {
     }
   });
 
+  // --- Video/Audio Calling Signaling ---
+  socket.on("call-user", (data) => {
+    const receiverSocket = onlineUsers.get(data.to.toString());
+    if (receiverSocket) {
+      socket.to(receiverSocket).emit("incoming-call", {
+        from: data.from,
+        name: data.name,
+        offer: data.offer,
+        callType: data.callType, // "video" or "audio"
+      });
+    }
+  });
+
+  socket.on("answer-call", (data) => {
+    const receiverSocket = onlineUsers.get(data.to.toString());
+    if (receiverSocket) {
+      socket.to(receiverSocket).emit("call-accepted", data.answer);
+    }
+  });
+
+  socket.on("reject-call", (data) => {
+    const receiverSocket = onlineUsers.get(data.to.toString());
+    if (receiverSocket) {
+      socket.to(receiverSocket).emit("call-rejected");
+    }
+  });
+
+  socket.on("end-call", (data) => {
+    const receiverSocket = onlineUsers.get(data.to.toString());
+    if (receiverSocket) {
+      socket.to(receiverSocket).emit("call-ended");
+    }
+  });
+
+  socket.on("ice-candidate", (data) => {
+    const receiverSocket = onlineUsers.get(data.to.toString());
+    if (receiverSocket) {
+      socket.to(receiverSocket).emit("ice-candidate", data.candidate);
+    }
+  });
+  // ----------------------------------------
+
   socket.on("toggle-status", async (data) => {
     const { userId, status } = data;
     await prisma.user.update({

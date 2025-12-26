@@ -5,11 +5,11 @@ import { v4 as uuidv4 } from "uuid";
 import Logo from "../assets/logo.svg";
 import axios from "axios";
 import { sendMessageRoute, recieveMessageRoute, markAsReadRoute, unsendMessageRoute, removeMessageRoute, deleteConversationRoute, addReactionRoute, removeReactionRoute, host } from "../utils/APIRoutes";
-import { IoArrowBack, IoClose } from "react-icons/io5";
+import { IoMdArrowBack, IoMdClose, IoMdVideocam, IoMdCall } from "react-icons/io";
 import { BsCheck, BsCheckAll, BsThreeDotsVertical } from "react-icons/bs";
 import { MdAddReaction } from "react-icons/md";
 
-export default function ChatContainer({ currentChat, socket, onlineUsers, currentUser, userStatus, onStatusToggle, onBack, onClose, arrivalMessage, refreshContacts, onDeleteConversation }) {
+export default function ChatContainer({ currentChat, socket, onlineUsers, currentUser, userStatus, onStatusToggle, onBack, onClose, onVideoCall, onAudioCall, arrivalMessage, refreshContacts, onDeleteConversation }) {
   const [messages, setMessages] = useState([]);
   const [viewingImage, setViewingImage] = useState(null);
   const [zoom, setZoom] = useState(1);
@@ -197,7 +197,7 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
       socket.current.on("conversation-deleted", (data) => {
         if (currentChat?.id === data.from) {
           setMessages([]);
-          if (onClose) onClose();
+          if (onBack) onBack(); // Use onBack to close chat
         }
         if (refreshContacts) refreshContacts();
       });
@@ -367,7 +367,7 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
       <div className="chat-header">
         <div className="user-details">
           <div className="back-button" onClick={onBack}>
-            <IoArrowBack />
+            <IoMdArrowBack />
           </div>
           <div className="avatar">
             {currentChat.avatarImage ? (
@@ -389,8 +389,10 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
           </div>
         </div>
         <div className="header-actions">
+          <IoMdCall className="call-icon" onClick={onAudioCall} title="Audio Call" />
+          <IoMdVideocam className="call-icon" onClick={onVideoCall} title="Video Call" />
           <div className="close-button" onClick={onClose} title="Close Chat">
-            <IoClose />
+            <IoMdClose />
           </div>
         </div>
       </div>
@@ -426,7 +428,13 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
                   {message.messageType === "IMAGE" ? (
                     <div className="image-content">
                       <img
-                        src={message.fileUrl ? (message.fileUrl.startsWith('http') ? message.fileUrl : `/${message.fileUrl}`) : ''}
+                        src={(() => {
+                          const url = message.fileUrl;
+                          if (!url) return '';
+                          if (url.startsWith('http') || url.startsWith('data:')) return url;
+                          const cleanUrl = url.replace(/\\/g, '/');
+                          return cleanUrl.startsWith('/') ? cleanUrl : `/${cleanUrl}`;
+                        })()}
                         alt="sent-uploaded"
                         onLoad={() => {
                           // Only auto-scroll for new messages (not when loading history)
@@ -441,7 +449,17 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
                             }
                           }
                         }}
-                        onClick={() => setViewingImage(message.fileUrl)}
+                        onClick={() => {
+                          const url = message.fileUrl;
+                          if (url) {
+                            if (url.startsWith('http') || url.startsWith('data:')) {
+                              setViewingImage(url);
+                            } else {
+                              const cleanUrl = url.replace(/\\/g, '/');
+                              setViewingImage(cleanUrl.startsWith('/') ? cleanUrl : `/${cleanUrl}`);
+                            }
+                          }
+                        }}
                         style={{ cursor: "pointer" }}
                       />
                       {message.message && <p>{message.message}</p>}
@@ -564,7 +582,7 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
                 onClick={() => setZoom(zoom === 1 ? 2 : 1)}
               />
               <button className="close-btn" onClick={() => { setViewingImage(null); setZoom(1); }}>
-                <IoClose />
+                <IoMdClose />
               </button>
               <div className="zoom-controls">
                 <button onClick={() => setZoom(Math.max(1, zoom - 0.5))}>-</button>
@@ -670,7 +688,18 @@ const Container = styled.div`
     .header-actions {
       display: flex;
       align-items: center;
-      gap: 1rem;
+      gap: 1.5rem;
+
+      .call-icon {
+        color: var(--text-dim);
+        font-size: 1.6rem;
+        cursor: pointer;
+        transition: var(--transition-smooth);
+        &:hover {
+          color: var(--primary-color);
+          transform: scale(1.1);
+        }
+      }
 
       .close-button {
         display: flex;
@@ -736,6 +765,7 @@ const Container = styled.div`
       .content {
         max-width: 55%;
         overflow-wrap: break-word;
+        padding: 0.5rem 1rem;
         font-size: 0.95rem;
         border-radius: 0.8rem;
         color: #f5f5f5;

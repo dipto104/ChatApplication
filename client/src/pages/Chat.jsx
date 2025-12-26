@@ -8,6 +8,7 @@ import ChatContainer from "../components/ChatContainer";
 import Contacts from "../components/Contacts";
 import Welcome from "../components/Welcome";
 import OnlineSidebar from "../components/OnlineSidebar";
+import VideoCall from "../components/VideoCall";
 
 export default function Chat() {
     const navigate = useNavigate();
@@ -37,6 +38,9 @@ export default function Chat() {
     const [onlineUsers, setOnlineUsers] = useState([]);
     const [userStatus, setUserStatus] = useState("online");
     const [arrivalMessage, setArrivalMessage] = useState(null);
+    const [showVideoCall, setShowVideoCall] = useState(false);
+    const [callType, setCallType] = useState("video");
+    const [incomingCall, setIncomingCall] = useState(null);
 
     const [showChatOnMobile, setShowChatOnMobile] = useState(false);
 
@@ -93,6 +97,12 @@ export default function Chat() {
                         });
                     });
                 }
+            });
+
+            socket.current.on("incoming-call", (data) => {
+                setIncomingCall(data);
+                setCallType(data.callType);
+                setShowVideoCall(true);
             });
 
             socket.current.on("msg-delivered", (data) => {
@@ -288,6 +298,16 @@ export default function Chat() {
                             arrivalMessage={arrivalMessage}
                             refreshContacts={fetchConversations}
                             onDeleteConversation={handleDeleteConversation}
+                            onVideoCall={() => {
+                                setCallType("video");
+                                setShowVideoCall(true);
+                                setIncomingCall(null);
+                            }}
+                            onAudioCall={() => {
+                                setCallType("audio");
+                                setShowVideoCall(true);
+                                setIncomingCall(null);
+                            }}
                         />
                     )}
                 </div>
@@ -299,6 +319,19 @@ export default function Chat() {
                     />
                 </div>
             </div>
+            {showVideoCall && (
+                <VideoCall
+                    socket={socket}
+                    currentUser={currentUser}
+                    currentChat={currentChat}
+                    type={callType}
+                    incomingCallData={incomingCall}
+                    onClose={() => {
+                        setShowVideoCall(false);
+                        setIncomingCall(null);
+                    }}
+                />
+            )}
         </Container>
     );
 }
