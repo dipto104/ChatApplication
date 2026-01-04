@@ -29,6 +29,10 @@ model Conversation {
   id           Int       @id @default(autoincrement())
   participants User[]
   messages     Message[]
+  isGroup      Boolean   @default(false)
+  name         String?   // For group name
+  description  String?
+  groupAdminId Int?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }

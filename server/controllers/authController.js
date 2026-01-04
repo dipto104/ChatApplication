@@ -97,6 +97,11 @@ module.exports.getActiveConversations = async (req, res, next) => {
                             deletedBy: { has: userId }
                         }
                     },
+                    include: {
+                        sender: {
+                            select: { username: true }
+                        }
+                    },
                     orderBy: {
                         createdAt: "desc",
                     },
@@ -112,27 +117,57 @@ module.exports.getActiveConversations = async (req, res, next) => {
             const visibleMessage = convo.messages[0];
             if (!visibleMessage) return null; // No visible messages, this convo should be hidden
 
-            const otherUser = convo.participants[0];
+            if (convo.isGroup) {
+                const unreadCount = await prisma.message.count({
+                    where: {
+                        conversationId: convo.id,
+                        senderId: { not: userId },
+                        status: { not: "READ" }
+                    },
+                });
 
-            // Count unread messages from the other user in this conversation that are NOT deleted by me
-            const unreadCount = await prisma.message.count({
-                where: {
+                return {
+                    id: convo.id,
+                    username: convo.name || "Group",
+                    email: "",
+                    firstName: convo.name || "Group",
+                    lastName: "",
+                    avatar: "",
+                    status: "offline",
+                    isGroup: true,
+                    participants: convo.participants,
                     conversationId: convo.id,
-                    senderId: otherUser.id,
-                    status: { not: "READ" },
-                    NOT: {
-                        deletedBy: { has: userId }
-                    }
-                },
-            });
+                    lastMessage: visibleMessage.content || "",
+                    senderName: visibleMessage.sender?.username || "",
+                    lastMessageTime: visibleMessage.createdAt || convo.updatedAt,
+                    unreadCount: unreadCount,
+                };
+            } else {
+                const otherUser = convo.participants[0];
 
-            return {
-                ...otherUser,
-                conversationId: convo.id,
-                lastMessage: visibleMessage.content || "",
-                lastMessageTime: visibleMessage.createdAt || convo.updatedAt,
-                unreadCount: unreadCount,
-            };
+                if (!otherUser) return null;
+
+                const unreadCount = await prisma.message.count({
+                    where: {
+                        conversationId: convo.id,
+                        senderId: otherUser.id,
+                        status: { not: "READ" },
+                        NOT: {
+                            deletedBy: { has: userId }
+                        }
+                    },
+                });
+
+                return {
+                    ...otherUser,
+                    conversationId: convo.id,
+                    isGroup: false,
+                    lastMessage: visibleMessage.content || "",
+                    senderName: visibleMessage.senderId === userId ? "You" : (visibleMessage.sender?.username || ""),
+                    lastMessageTime: visibleMessage.createdAt || convo.updatedAt,
+                    unreadCount: unreadCount,
+                };
+            }
         }));
 
         // Filter out nulls (hidden conversations)

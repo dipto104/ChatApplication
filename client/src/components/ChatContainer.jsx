@@ -52,6 +52,7 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
         const response = await axios.post(recieveMessageRoute, {
           from: currentUser.id,
           to: currentChat.id,
+          isGroup: currentChat.isGroup,
           limit: MESSAGE_LIMIT,
         });
         setMessages(response.data);
@@ -111,11 +112,14 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
       messageType: type,
       fileUrl,
       fileName,
+      isGroup: currentChat.isGroup,
+      senderName: currentUser.username,
     };
 
     await axios.post(sendMessageRoute, {
       from: currentUser.id,
       to: currentChat.id,
+      isGroup: currentChat.isGroup,
       message: msg,
       messageType: type,
       fileUrl,
@@ -131,6 +135,7 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
       messageType: type,
       fileUrl,
       fileName,
+      sender: { username: currentUser.username }, // Add sender info for local display
       status: isOnline ? "DELIVERED" : "SENT",
       time: new Date()
     }]);
@@ -155,7 +160,12 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
         }
       } else {
         // Normal message
-        if (currentChat?.id === arrivalMessage.from) {
+        // For groups, check if message belongs to current group (conversationId)
+        // For 1-on-1, check if message comes from the user (from)
+        if (
+          (currentChat.isGroup && currentChat.id == arrivalMessage.conversationId) ||
+          (!currentChat.isGroup && currentChat.id == arrivalMessage.from)
+        ) {
           setMessages((prev) => [...prev, {
             id: uuidv4(),
             fromSelf: false,
@@ -163,6 +173,7 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
             messageType: arrivalMessage.messageType || "TEXT",
             fileUrl: arrivalMessage.fileUrl || null,
             fileName: arrivalMessage.fileName || null,
+            sender: { username: arrivalMessage.senderName }, // Capture sender name
             status: "SENT",
             time: arrivalMessage.time
           }]);
@@ -381,15 +392,22 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
               />
             ) : (
               <div className="initial-avatar">
-                {currentChat.username[0].toUpperCase()}
+                {(currentChat.name || currentChat.username)[0].toUpperCase()}
               </div>
             )}
           </div>
           <div className="username">
-            <h3>{currentChat.firstName && currentChat.lastName ? `${currentChat.firstName} ${currentChat.lastName}` : currentChat.username}</h3>
-            <span className={`status ${isOnline ? "online" : "offline"}`}>
-              {isOnline ? "Online" : "Offline"}
-            </span>
+            <h3>{currentChat.name || (currentChat.firstName && currentChat.lastName ? `${currentChat.firstName} ${currentChat.lastName}` : currentChat.username)}</h3>
+            {!currentChat.isGroup && (
+              <span className={`status ${isOnline ? "online" : "offline"}`}>
+                {isOnline ? "Online" : "Offline"}
+              </span>
+            )}
+            {currentChat.isGroup && (
+              <span className="status offline">
+                {currentChat.participants?.length || 0} members
+              </span>
+            )}
           </div>
         </div>
         <div className="header-actions">
@@ -415,6 +433,12 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
                   }`}
               >
                 <div className="content">
+                  {/* Show Sender Name in Group Chat */}
+                  {currentChat.isGroup && !message.fromSelf && message.sender && (
+                    <span className="message-sender-name" style={{ fontSize: '0.75rem', color: 'var(--primary-color)', fontWeight: 'bold', display: 'block', marginBottom: '0.2rem' }}>
+                      {message.sender.username}
+                    </span>
+                  )}
                   <div className="message-options">
                     <BsThreeDotsVertical
                       onClick={() => setMsgMenuVisible(msgMenuVisible === message.id ? null : message.id)}
@@ -620,7 +644,7 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
           </LightboxOverlay>
         )
       }
-    </Container>
+    </Container >
   );
 }
 

@@ -5,13 +5,17 @@ import { BsThreeDotsVertical } from "react-icons/bs";
 import { BiPowerOff, BiChevronDown, BiSearch } from "react-icons/bi";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { searchUserRoute } from "../utils/APIRoutes";
+import { searchUserRoute, getUserGroupsRoute } from "../utils/APIRoutes";
+import CreateGroupModal from "./CreateGroupModal";
+import { IoMdAdd } from "react-icons/io";
 
-export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, userStatus, onStatusToggle, isConversationList, onDeleteConversation, onDeleteForMe }) {
+export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, userStatus, onStatusToggle, isConversationList, socket, onDeleteConversation, onDeleteForMe }) {
   const [currentUserName, setCurrentUserName] = useState(undefined);
   const [currentUserImage, setCurrentUserImage] = useState(undefined);
   const [currentSelected, setCurrentSelected] = useState(undefined);
+  const [currentUser, setCurrentUser] = useState(undefined);
   const [view, setView] = useState("recent"); // "recent" or "online"
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [menuVisible, setMenuVisible] = useState(null); // contact.id of open menu
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -23,6 +27,7 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
       localStorage.getItem("chat-app-user")
     );
     if (data) {
+      setCurrentUser(data);
       setCurrentUserName(data.firstName && data.lastName ? `${data.firstName} ${data.lastName}` : data.username);
       setCurrentUserImage(data.avatarImage);
     }
@@ -54,6 +59,8 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
   const isUserOnline = (userId) => {
     return onlineUsers?.includes(userId);
   };
+
+
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
@@ -87,7 +94,10 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
             <div className="brand">
               <img src={Logo} alt="logo" />
               <h1 className="brand-name">chat</h1>
+              <IoMdAdd className="add-group-btn" onClick={() => setShowCreateGroup(true)} title="Create Group" />
             </div>
+
+
             <div className="search-bar">
               <BiSearch />
               <input
@@ -112,6 +122,7 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
               </button>
             </div>
           </div>
+
           <div className="contacts">
             {searchQuery.length > 0 ? (
               searchResults.length > 0 ? (
@@ -129,7 +140,7 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
                         />
                       ) : (
                         <div className="initial-avatar">
-                          {contact.username[0].toUpperCase()}
+                          {contact.username ? contact.username[0].toUpperCase() : "U"}
                         </div>
                       )}
                       <div className={`status-dot ${isUserOnline(contact.id) ? "online" : "offline"}`}></div>
@@ -153,33 +164,51 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
                       onClick={() => changeCurrentChat(contact)}
                     >
                       <div className="avatar">
-                        {contact.avatarImage ? (
-                          <img
-                            src={`data:image/svg+xml;base64,${contact.avatarImage}`}
-                            alt=""
-                          />
-                        ) : (
+                        {contact.isGroup ? (
                           <div className="initial-avatar">
-                            {contact.username[0].toUpperCase()}
+                            {contact.username ? contact.username.substring(0, 2).toUpperCase() : "GP"}
                           </div>
+                        ) : (
+                          contact.avatarImage ? (
+                            <img
+                              src={`data:image/svg+xml;base64,${contact.avatarImage}`}
+                              alt=""
+                            />
+                          ) : (
+                            <div className="initial-avatar">
+                              {contact.username[0].toUpperCase()}
+                            </div>
+                          )
                         )}
-                        <div className={`status-dot ${isUserOnline(contact.id) ? "online" : "offline"}`}></div>
+                        {!contact.isGroup && <div className={`status-dot ${isUserOnline(contact.id) ? "online" : "offline"}`}></div>}
                       </div>
                       <div className="username">
-                        <h3>{contact.firstName && contact.lastName ? `${contact.firstName} ${contact.lastName}` : contact.username}</h3>
+                        <h3>{contact.isGroup ? contact.username : (contact.firstName && contact.lastName ? `${contact.firstName} ${contact.lastName}` : contact.username)}</h3>
                         {isConversationList && contact.lastMessage && (
                           <p className="last-message">
+                            {contact.isGroup && contact.senderName && <span style={{ fontWeight: 'bold' }}>{contact.senderName}: </span>}
                             {contact.lastMessage.length > 25
                               ? contact.lastMessage.substring(0, 25) + "..."
                               : contact.lastMessage}
                           </p>
                         )}
                       </div>
-                      {isConversationList && contact.unreadCount > 0 && (
-                        <div className="unread-badge">
-                          {contact.unreadCount}
+
+                      {isConversationList && (
+                        <div className="contact-meta">
+                          {contact.lastMessageTime && (
+                            <span className="time">
+                              {new Date(contact.lastMessageTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                          {contact.unreadCount > 0 && (
+                            <div className="unread-badge">
+                              {contact.unreadCount}
+                            </div>
+                          )}
                         </div>
                       )}
+
                       {isConversationList && (
                         <div className="contact-menu">
                           <BsThreeDotsVertical
@@ -220,7 +249,7 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
               ) : (
                 (() => {
                   const usersToFilter = (allUsers && allUsers.length > 0) ? allUsers : contacts;
-                  const onlineList = usersToFilter.filter(c => onlineUsers.includes(c.id));
+                  const onlineList = usersToFilter.filter(c => !c.isGroup && onlineUsers.includes(c.id));
 
                   if (onlineList.length === 0) {
                     return <div className="no-online-mobile">No one is online</div>;
@@ -253,6 +282,7 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
                   ));
                 })()
               ))}
+
           </div>
           <div className="current-user" onClick={(e) => { e.stopPropagation(); setUserMenuOpen(!userMenuOpen); }}>
             <div className="avatar">
@@ -290,8 +320,23 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
               </div>
             )}
           </div>
-        </Container>
-      )}
+        </Container >
+      )
+      }
+      {
+        showCreateGroup && (
+          <CreateGroupModal
+            currentUser={JSON.parse(localStorage.getItem("chat-app-user"))}
+            onClose={() => setShowCreateGroup(false)}
+            onGroupCreated={(newGroup) => {
+              if (socket.current) {
+                socket.current.emit("create-group", newGroup);
+              }
+              setShowCreateGroup(false);
+            }}
+          />
+        )
+      }
     </>
   );
 }
@@ -348,6 +393,14 @@ const Container = styled.div`
         font-size: 0.85rem;
       }
     }
+    }
+    
+    .add-group-btn {
+        color: var(--text-dim);
+        font-size: 1.5rem;
+        cursor: pointer;
+        margin-left: auto; /* Push to right */
+        &:hover { color: var(--primary-color); }
     }
   }
 
@@ -488,19 +541,36 @@ const Container = styled.div`
         background-color: rgba(255, 255, 255, 0.03);
       }
     }
+    .contact-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.3rem;
+      margin-left: auto;
+      
+      .time {
+        font-size: 0.7rem;
+        color: var(--text-dim);
+        font-weight: 400;
+      }
+    }
+
     .unread-badge {
       background-color: #3390ec;
       color: white;
-      font-size: 0.75rem;
-      font-weight: 600;
+      font-size: 0.7rem;
+      font-weight: 700;
       min-width: 1.2rem;
       height: 1.2rem;
-      padding: 0 0.4rem;
+      padding: 0 0.35rem;
       border-radius: 1rem;
       display: flex;
       justify-content: center;
       align-items: center;
+      width: fit-content;
+      box-shadow: 0 0 12px rgba(51, 144, 236, 0.6);
       animation: pulse 2s infinite;
+      line-height: 1;
     }
 
     @keyframes pulse {
@@ -775,6 +845,12 @@ const Container = styled.div`
         }
       }
     }
+  }
+
+  .group-tabs {
+     display: flex !important; /* Force display even on desktop to show Tabs */
+     padding-bottom: 0.5rem;
+     margin-top: -0.5rem;
   }
 
   .no-online-mobile {

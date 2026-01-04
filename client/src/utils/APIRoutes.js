@@ -17,3 +17,5 @@ export const setAvatarRoute = `/api/auth/setavatar`;
 export const getAllConversationsRoute = `/api/auth/allconversations`;
 export const activeConversationsRoute = `/api/auth/active-conversations`;
 export const searchUserRoute = `/api/auth/search`;
+export const createGroupRoute = `/api/auth/create-group`;
+export const getUserGroupsRoute = `/api/auth/get-user-groups`;

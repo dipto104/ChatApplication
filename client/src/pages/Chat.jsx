@@ -66,37 +66,55 @@ export default function Chat() {
                     message: data.msg,
                     messageType: data.messageType,
                     fileUrl: data.fileUrl,
+                    fileName: data.fileName,
+                    senderName: data.senderName,
+                    conversationId: data.conversationId,
+                    isGroup: data.isGroup,
                     time: new Date()
                 });
 
-                // Check if the sender is already in our contacts list
-                // Use loose equality to handle string/number mismatch possibilities
-                const isKnownContact = contactsRef.current.some(c => c.id == data.from);
+                // For Groups, the contact ID is the conversationId (groupId)
+                // For 1-on-1, the contact ID is data.from (senderId)
+                const targetId = data.isGroup ? data.conversationId : data.from;
+                const isKnownContact = contactsRef.current.some(c => c.id == targetId && (c.isGroup === (data.isGroup || false)));
 
                 if (!isKnownContact) {
-                    // New conversation started! Fetch fresh list from server to get user details
                     fetchConversations();
                 } else {
-                    // Existing conversation, update optimistically
                     setContacts((prev) => {
                         const updatedContacts = prev.map((contact) => {
-                            if (contact.id === data.from) {
+                            if (contact.id == targetId && (contact.isGroup === (data.isGroup || false))) {
                                 return {
                                     ...contact,
                                     lastMessage: data.msg,
-                                    unreadCount: currentChatRef.current?.id === data.from ? 0 : (contact.unreadCount || 0) + 1,
+                                    senderName: data.senderName, // Update sender name for group preview
+                                    lastMessageTime: new Date().toISOString(),
+                                    unreadCount: currentChatRef.current?.id === targetId ? 0 : (contact.unreadCount || 0) + 1,
                                 };
                             }
                             return contact;
                         });
 
                         return updatedContacts.sort((a, b) => {
-                            if (a.id === data.from) return -1;
-                            if (b.id === data.from) return 1;
-                            return 0;
+                            const dateA = new Date(a.lastMessageTime || a.updatedAt || 0);
+                            const dateB = new Date(b.lastMessageTime || b.updatedAt || 0);
+                            return dateB - dateA;
                         });
                     });
                 }
+            });
+
+            socket.current.on("new-group-added", (newGroup) => {
+                // Check if already exists to avoid duplicates
+                setContacts((prev) => {
+                    if (prev.find(c => c.id === newGroup.id && c.isGroup)) return prev;
+                    const updated = [newGroup, ...prev];
+                    return updated.sort((a, b) => {
+                        const dateA = new Date(a.lastMessageTime || a.updatedAt || 0);
+                        const dateB = new Date(b.lastMessageTime || b.updatedAt || 0);
+                        return dateB - dateA;
+                    });
+                });
             });
 
             socket.current.on("incoming-call", (data) => {
@@ -274,6 +292,7 @@ export default function Chat() {
                         userStatus={userStatus}
                         onStatusToggle={handleStatusToggle}
                         isConversationList={true}
+                        socket={socket}
                         onDeleteConversation={handleDeleteConversation}
                         onDeleteForMe={handleDeleteForMe}
                     />

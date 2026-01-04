@@ -8,24 +8,35 @@ module.exports.addMessage = async (req, res, next) => {
         const senderId = parseInt(from);
         const receiverId = parseInt(to);
 
-        // 1. Find or create the conversation between the two users
-        let conversation = await prisma.conversation.findFirst({
-            where: {
-                AND: [
-                    { participants: { some: { id: senderId } } },
-                    { participants: { some: { id: receiverId } } },
-                ],
-            },
-        });
+        // 1. Determine Conversation ID
+        let conversationId;
+        const isGroup = req.body.isGroup; // Frontend must send this
 
-        if (!conversation) {
-            conversation = await prisma.conversation.create({
-                data: {
-                    participants: {
-                        connect: [{ id: senderId }, { id: receiverId }],
-                    },
+        if (isGroup) {
+            conversationId = parseInt(to); // "to" acts as conversationId for groups
+        } else {
+            // 1-on-1 Logic: Find or create conversation
+            let conversation = await prisma.conversation.findFirst({
+                where: {
+                    isGroup: false,
+                    AND: [
+                        { participants: { some: { id: senderId } } },
+                        { participants: { some: { id: receiverId } } },
+                    ],
                 },
             });
+
+            if (!conversation) {
+                conversation = await prisma.conversation.create({
+                    data: {
+                        isGroup: false,
+                        participants: {
+                            connect: [{ id: senderId }, { id: receiverId }],
+                        },
+                    },
+                });
+            }
+            conversationId = conversation.id;
         }
 
         // 2. Create the message linked to the conversation
@@ -39,14 +50,14 @@ module.exports.addMessage = async (req, res, next) => {
                 fileUrl: fileUrl || null,
                 fileName: fileName || null,
                 sender: { connect: { id: senderId } },
-                conversation: { connect: { id: conversation.id } },
+                conversation: { connect: { id: conversationId } },
                 status: initialStatus,
             },
         });
 
         // 3. Update the conversation's updatedAt timestamp to bring it to the top
         await prisma.conversation.update({
-            where: { id: conversation.id },
+            where: { id: conversationId },
             data: { updatedAt: new Date() },
         });
 
@@ -59,28 +70,41 @@ module.exports.addMessage = async (req, res, next) => {
 
 module.exports.getAllMessages = async (req, res, next) => {
     try {
-        const { from, to, before, limit = 20 } = req.body;
+        const { from, to, before, limit = 20, isGroup } = req.body;
         const senderId = parseInt(from);
-        const receiverId = parseInt(to);
 
-        // 1. Find the conversation between the two users
-        const conversation = await prisma.conversation.findFirst({
-            where: {
-                AND: [
-                    { participants: { some: { id: senderId } } },
-                    { participants: { some: { id: receiverId } } },
-                ],
-            },
-        });
+        let conversationId;
 
-        if (!conversation) {
-            return res.json([]);
+        if (isGroup) {
+            conversationId = parseInt(to); // In group chat, 'to' is the groupId (conversationId)
+        } else {
+            const receiverId = parseInt(to);
+            // 1. Find the conversation between the two users
+            const conversation = await prisma.conversation.findFirst({
+                where: {
+                    isGroup: false,
+                    AND: [
+                        { participants: { some: { id: senderId } } },
+                        { participants: { some: { id: receiverId } } },
+                    ],
+                },
+            });
+            if (!conversation) return res.json([]);
+            conversationId = conversation.id;
         }
+
+        /* 
+           Note: We removed the check for "if (!conversation)" for groups because 
+           we assume the group ID passed is valid. If strictness is needed, 
+           we could findUnique({where: {id: conversationId}}) here.
+        */
+
+
 
         // 2. Fetch paginated messages with reactions
         const messages = await prisma.message.findMany({
             where: {
-                conversationId: conversation.id,
+                conversationId: conversationId,
                 NOT: {
                     deletedBy: {
                         has: senderId,
@@ -93,6 +117,11 @@ module.exports.getAllMessages = async (req, res, next) => {
                 }),
             },
             include: {
+                sender: {
+                    select: {
+                        username: true,
+                    }
+                },
                 reactions: {
                     include: {
                         user: {
@@ -119,6 +148,7 @@ module.exports.getAllMessages = async (req, res, next) => {
                 fileUrl: msg.fileUrl, // Return raw relative path
                 fileName: msg.fileName,
                 status: msg.status,
+                sender: msg.sender ? { username: msg.sender.username } : null, // Fixed to match frontend expectations
                 reactions: msg.reactions || [],
                 time: msg.createdAt,
             };

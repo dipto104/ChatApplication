@@ -46,45 +46,98 @@ io.on("connection", (socket) => {
   socket.on("add-user", async (userId) => {
     if (!userId) return;
     onlineUsers.set(userId.toString(), socket.id);
+
+    // Join user to their group rooms
+    const userGroups = await prisma.conversation.findMany({
+      where: {
+        isGroup: true,
+        participants: { some: { id: parseInt(userId) } }
+      },
+      select: { id: true }
+    });
+
+    userGroups.forEach(group => {
+      socket.join("conversation_" + group.id);
+    });
+
     await broadcastOnlineUsers();
   });
 
   socket.on("send-msg", async (data) => {
-    const sendUserSocket = onlineUsers.get(data.to.toString());
-    if (sendUserSocket) {
-      socket.to(sendUserSocket).emit("msg-recieve", {
+    if (data.isGroup) {
+      // Emit to the room (excludes sender by default if using socket.to)
+      socket.to("conversation_" + data.to).emit("msg-recieve", {
         msg: data.msg,
         from: data.from,
+        conversationId: data.to, // Group ID
+        isGroup: true,
         messageType: data.messageType,
         fileUrl: data.fileUrl,
-      });
-      // Acknowledgment for Delivery
-      socket.emit("msg-delivered", {
-        to: data.from.toString(), // send back to original sender
-        from: data.to,
+        fileName: data.fileName,
+        senderName: data.senderName, // Useful for frontend
       });
 
-      // Update database status
-      await prisma.message.updateMany({
-        where: {
-          senderId: data.from,
-          conversation: {
-            participants: { some: { id: parseInt(data.to) } }
+      // No delivery status for groups (too complex for now) or set to SENT
+    } else {
+      const sendUserSocket = onlineUsers.get(data.to.toString());
+      if (sendUserSocket) {
+        socket.to(sendUserSocket).emit("msg-recieve", {
+          msg: data.msg,
+          from: data.from,
+          messageType: data.messageType,
+          fileUrl: data.fileUrl,
+          fileName: data.fileName,
+        });
+        // Acknowledgment for Delivery
+        socket.emit("msg-delivered", {
+          to: data.from.toString(), // send back to original sender
+          from: data.to,
+        });
+
+        // Update database status
+        await prisma.message.updateMany({
+          where: {
+            senderId: data.from,
+            conversation: {
+              participants: { some: { id: parseInt(data.to) } }
+            },
+            status: "SENT",
           },
-          status: "SENT",
-        },
-        data: { status: "DELIVERED" }
-      });
+          data: { status: "DELIVERED" }
+        });
+      }
     }
   });
 
+  socket.on("create-group", (newGroup) => {
+    // Expecting newGroup to be the full group object with participants
+    const participants = newGroup.participants;
+
+    participants.forEach((participant) => {
+      const participantId = participant.id.toString();
+      const participantSocketId = onlineUsers.get(participantId);
+
+      if (participantSocketId) {
+        // Emit to user to update their list
+        io.to(participantSocketId).emit("new-group-added", newGroup);
+
+        // Make the user's socket join the new group room immediately
+        const userSocket = io.sockets.sockets.get(participantSocketId);
+        if (userSocket) {
+          userSocket.join("conversation_" + newGroup.id);
+        }
+      }
+    });
+  });
+
   socket.on("unsend-msg", (data) => {
-    const receiverSocket = onlineUsers.get(data.to.toString());
-    if (receiverSocket) {
-      socket.to(receiverSocket).emit("msg-unsend", {
-        messageId: data.messageId,
-        from: data.from,
-      });
+    if (data.isGroup) {
+      socket.to("conversation_" + data.to).emit("msg-unsend", data);
+    } else {
+      const receiverSocket = onlineUsers.get(data.to.toString());
+      if (receiverSocket) {
+        socket.to(receiverSocket).emit("msg-unsend", data);
+      }
     }
   });
 
@@ -129,6 +182,41 @@ io.on("connection", (socket) => {
   });
 
   // --- Video/Audio Calling Signaling ---
+
+  // Group Call Signaling
+  socket.on("join-call", (data) => {
+    // Broadcast to everyone else in the group that a user joined the call
+    socket.to("conversation_" + data.groupId).emit("user-connected-to-call", {
+      signal: data.signal, // Optional: if using immediate offer
+      from: data.from,
+      name: data.name,
+      socketId: socket.id
+    });
+  });
+
+  socket.on("offer-group-signal", (data) => {
+    // Send offer to specific user in group
+    const receiverSocket = onlineUsers.get(data.to.toString());
+    if (receiverSocket) {
+      socket.to(receiverSocket).emit("receive-group-signal", {
+        signal: data.signal,
+        from: data.from,
+        name: data.name
+      });
+    }
+  });
+
+  socket.on("return-group-signal", (data) => {
+    const receiverSocket = onlineUsers.get(data.to.toString());
+    if (receiverSocket) {
+      socket.to(receiverSocket).emit("receive-returned-signal", {
+        signal: data.signal,
+        from: data.from
+      });
+    }
+  });
+
+  // 1-on-1 Legacy Signaling (Keep for now or refactor to use above if unified)
   socket.on("call-user", (data) => {
     const receiverSocket = onlineUsers.get(data.to.toString());
     if (receiverSocket) {
