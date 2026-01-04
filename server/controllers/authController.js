@@ -4,7 +4,7 @@ const prisma = require("../db/prisma");
 
 module.exports.register = async (req, res, next) => {
     try {
-        const { username, email, password } = req.body;
+        const { username, email, password, firstName, lastName } = req.body;
         const usernameCheck = await prisma.user.findUnique({ where: { username } });
         if (usernameCheck)
             return res.json({ msg: "Username already used", status: false });
@@ -17,6 +17,8 @@ module.exports.register = async (req, res, next) => {
             data: {
                 email,
                 username,
+                firstName,
+                lastName,
                 password: hashedPassword,
             },
         });
@@ -55,6 +57,8 @@ module.exports.getAllUsers = async (req, res, next) => {
             select: {
                 email: true,
                 username: true,
+                firstName: true,
+                lastName: true,
                 avatar: true,
                 id: true,
             },
@@ -82,6 +86,8 @@ module.exports.getActiveConversations = async (req, res, next) => {
                     select: {
                         id: true,
                         username: true,
+                        firstName: true,
+                        lastName: true,
                         avatar: true,
                     },
                 },
@@ -133,6 +139,43 @@ module.exports.getActiveConversations = async (req, res, next) => {
         const activeUsers = activeUsersData.filter(u => u !== null);
 
         return res.json(activeUsers);
+    } catch (ex) {
+        next(ex);
+    }
+};
+
+module.exports.searchUsers = async (req, res, next) => {
+    try {
+        const { query } = req.query;
+        const userId = parseInt(req.params.id);
+
+        if (!query) return res.json([]);
+
+        const users = await prisma.user.findMany({
+            where: {
+                AND: [
+                    { id: { not: userId } },
+                    {
+                        OR: [
+                            { username: { contains: query, mode: "insensitive" } },
+                            { email: { contains: query, mode: "insensitive" } },
+                            { firstName: { contains: query, mode: "insensitive" } },
+                            { lastName: { contains: query, mode: "insensitive" } },
+                        ]
+                    }
+                ]
+            },
+            select: {
+                email: true,
+                username: true,
+                firstName: true,
+                lastName: true,
+                avatar: true,
+                id: true,
+                status: true,
+            },
+        });
+        return res.json(users);
     } catch (ex) {
         next(ex);
     }

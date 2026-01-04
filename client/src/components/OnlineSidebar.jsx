@@ -35,7 +35,7 @@ export default function OnlineSidebar({ onlineUsers, contacts, changeChat }) {
                 <div className="status-dot online"></div>
               </div>
               <div className="username">
-                <h3>{contact.username}</h3>
+                <h3>{contact.firstName && contact.lastName ? `${contact.firstName} ${contact.lastName}` : contact.username}</h3>
                 <p>Active now</p>
               </div>
             </div>

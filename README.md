@@ -47,6 +47,8 @@ Navigate to `server/`:
     ```bash
     npx prisma db push
     ```
+4.  **Create Uploads Directory**:
+    *   Create a folder named `uploads` inside the `server/` directory. This is required for storing shared files and images.
 
 ### 3. Client Configuration
 Navigate to `client/`:

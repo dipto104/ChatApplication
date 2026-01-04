@@ -2,8 +2,10 @@ import React, { useState, useEffect } from "react";
 import styled from "styled-components";
 import Logo from "../assets/logo.svg";
 import { BsThreeDotsVertical } from "react-icons/bs";
-import { BiPowerOff, BiChevronDown } from "react-icons/bi";
+import { BiPowerOff, BiChevronDown, BiSearch } from "react-icons/bi";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
+import { searchUserRoute } from "../utils/APIRoutes";
 
 export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, userStatus, onStatusToggle, isConversationList, onDeleteConversation, onDeleteForMe }) {
   const [currentUserName, setCurrentUserName] = useState(undefined);
@@ -12,6 +14,8 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
   const [view, setView] = useState("recent"); // "recent" or "online"
   const [menuVisible, setMenuVisible] = useState(null); // contact.id of open menu
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -19,7 +23,7 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
       localStorage.getItem("chat-app-user")
     );
     if (data) {
-      setCurrentUserName(data.username);
+      setCurrentUserName(data.firstName && data.lastName ? `${data.firstName} ${data.lastName}` : data.username);
       setCurrentUserImage(data.avatarImage);
     }
   }, []);
@@ -51,6 +55,30 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
     return onlineUsers?.includes(userId);
   };
 
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (searchQuery.length > 0) {
+        try {
+          // Assuming we have the current user's ID stored in localStorage or available via props
+          // But wait, the API needs the current user's ID (req.params.id)
+          // Let's get it from localStorage again if needed, or better, pass currentUser as prop?
+          // data is parsed in useEffect above, let's store currentUser ID there too.
+          const user = await JSON.parse(localStorage.getItem("chat-app-user"));
+          if (user) {
+            const { data } = await axios.get(`${searchUserRoute}/${user.id}?query=${searchQuery}`);
+            setSearchResults(data);
+          }
+        } catch (error) {
+          console.error("Error searching users:", error);
+        }
+      } else {
+        setSearchResults([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
   return (
     <>
       {currentUserName && (
@@ -59,6 +87,15 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
             <div className="brand">
               <img src={Logo} alt="logo" />
               <h1 className="brand-name">chat</h1>
+            </div>
+            <div className="search-bar">
+              <BiSearch />
+              <input
+                type="text"
+                placeholder="Search users..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
             <div className="view-toggle">
               <button
@@ -76,9 +113,9 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
             </div>
           </div>
           <div className="contacts">
-            {view === "recent" ? (
-              contacts.map((contact, index) => {
-                return (
+            {searchQuery.length > 0 ? (
+              searchResults.length > 0 ? (
+                searchResults.map((contact) => (
                   <div
                     key={contact.id}
                     className={`contact ${contact.id === currentSelected ? "selected" : ""}`}
@@ -98,93 +135,124 @@ export default function Contacts({ contacts, allUsers, changeChat, onlineUsers, 
                       <div className={`status-dot ${isUserOnline(contact.id) ? "online" : "offline"}`}></div>
                     </div>
                     <div className="username">
-                      <h3>{contact.username}</h3>
-                      {isConversationList && contact.lastMessage && (
-                        <p className="last-message">
-                          {contact.lastMessage.length > 25
-                            ? contact.lastMessage.substring(0, 25) + "..."
-                            : contact.lastMessage}
-                        </p>
-                      )}
+                      <h3>{contact.firstName && contact.lastName ? `${contact.firstName} ${contact.lastName}` : contact.username}</h3>
+                      <p className="last-message">@{contact.username}</p>
                     </div>
-                    {isConversationList && contact.unreadCount > 0 && (
-                      <div className="unread-badge">
-                        {contact.unreadCount}
-                      </div>
-                    )}
-                    {isConversationList && (
-                      <div className="contact-menu">
-                        <BsThreeDotsVertical
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMenuVisible(menuVisible === contact.id ? null : contact.id);
-                          }}
-                        />
-                        {menuVisible === contact.id && (
-                          <div className="menu-dropdown">
-                            <p
-                              className="delete-me"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteForMe(contact.conversationId, contact.id);
-                                setMenuVisible(null);
-                              }}
-                            >
-                              Delete for me
-                            </p>
-                            <p
-                              className="delete-everyone"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteConversation(contact.conversationId, contact.id);
-                                setMenuVisible(null);
-                              }}
-                            >
-                              Delete for everyone
-                            </p>
+                  </div>
+                ))
+              ) : (
+                <div className="no-results">No users found</div>
+              )
+            ) : (
+              view === "recent" ? (
+                contacts.map((contact, index) => {
+                  return (
+                    <div
+                      key={contact.id}
+                      className={`contact ${contact.id === currentSelected ? "selected" : ""}`}
+                      onClick={() => changeCurrentChat(contact)}
+                    >
+                      <div className="avatar">
+                        {contact.avatarImage ? (
+                          <img
+                            src={`data:image/svg+xml;base64,${contact.avatarImage}`}
+                            alt=""
+                          />
+                        ) : (
+                          <div className="initial-avatar">
+                            {contact.username[0].toUpperCase()}
                           </div>
                         )}
+                        <div className={`status-dot ${isUserOnline(contact.id) ? "online" : "offline"}`}></div>
                       </div>
-                    )}
-                  </div>
-                );
-              })
-            ) : (
-              (() => {
-                const usersToFilter = (allUsers && allUsers.length > 0) ? allUsers : contacts;
-                const onlineList = usersToFilter.filter(c => onlineUsers.includes(c.id));
-
-                if (onlineList.length === 0) {
-                  return <div className="no-online-mobile">No one is online</div>;
-                }
-
-                return onlineList.map((contact) => (
-                  <div
-                    key={contact.id}
-                    className={`contact ${contact.id === currentSelected ? "selected" : ""}`}
-                    onClick={() => changeCurrentChat(contact)}
-                  >
-                    <div className="avatar">
-                      {contact.avatarImage ? (
-                        <img
-                          src={`data:image/svg+xml;base64,${contact.avatarImage}`}
-                          alt=""
-                        />
-                      ) : (
-                        <div className="initial-avatar">
-                          {contact.username[0].toUpperCase()}
+                      <div className="username">
+                        <h3>{contact.firstName && contact.lastName ? `${contact.firstName} ${contact.lastName}` : contact.username}</h3>
+                        {isConversationList && contact.lastMessage && (
+                          <p className="last-message">
+                            {contact.lastMessage.length > 25
+                              ? contact.lastMessage.substring(0, 25) + "..."
+                              : contact.lastMessage}
+                          </p>
+                        )}
+                      </div>
+                      {isConversationList && contact.unreadCount > 0 && (
+                        <div className="unread-badge">
+                          {contact.unreadCount}
                         </div>
                       )}
-                      <div className="status-dot online"></div>
+                      {isConversationList && (
+                        <div className="contact-menu">
+                          <BsThreeDotsVertical
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuVisible(menuVisible === contact.id ? null : contact.id);
+                            }}
+                          />
+                          {menuVisible === contact.id && (
+                            <div className="menu-dropdown">
+                              <p
+                                className="delete-me"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteForMe(contact.conversationId, contact.id);
+                                  setMenuVisible(null);
+                                }}
+                              >
+                                Delete for me
+                              </p>
+                              <p
+                                className="delete-everyone"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteConversation(contact.conversationId, contact.id);
+                                  setMenuVisible(null);
+                                }}
+                              >
+                                Delete for everyone
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="username">
-                      <h3>{contact.username}</h3>
-                      <p className="last-message">Active now</p>
+                  );
+                })
+              ) : (
+                (() => {
+                  const usersToFilter = (allUsers && allUsers.length > 0) ? allUsers : contacts;
+                  const onlineList = usersToFilter.filter(c => onlineUsers.includes(c.id));
+
+                  if (onlineList.length === 0) {
+                    return <div className="no-online-mobile">No one is online</div>;
+                  }
+
+                  return onlineList.map((contact) => (
+                    <div
+                      key={contact.id}
+                      className={`contact ${contact.id === currentSelected ? "selected" : ""}`}
+                      onClick={() => changeCurrentChat(contact)}
+                    >
+                      <div className="avatar">
+                        {contact.avatarImage ? (
+                          <img
+                            src={`data:image/svg+xml;base64,${contact.avatarImage}`}
+                            alt=""
+                          />
+                        ) : (
+                          <div className="initial-avatar">
+                            {contact.username[0].toUpperCase()}
+                          </div>
+                        )}
+                        <div className="status-dot online"></div>
+                      </div>
+                      <div className="username">
+                        <h3>{contact.firstName && contact.lastName ? `${contact.firstName} ${contact.lastName}` : contact.username}</h3>
+                        <p className="last-message">Active now</p>
+                      </div>
                     </div>
-                  </div>
-                ));
-              })()
-            )}
+                  ));
+                })()
+              ))}
           </div>
           <div className="current-user" onClick={(e) => { e.stopPropagation(); setUserMenuOpen(!userMenuOpen); }}>
             <div className="avatar">
@@ -237,7 +305,10 @@ const Container = styled.div`
   border-right: 1px solid var(--glass-border);
 
   .sidebar-header {
-    display: contents; /* Keeps layout logic in parent Container for desktop compatibility if needed */
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding-bottom: 1rem;
   }
 
   @media screen and (max-width: 719px) {
@@ -277,6 +348,43 @@ const Container = styled.div`
         font-size: 0.85rem;
       }
     }
+    }
+  }
+
+  .search-bar {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    margin: 0 1rem;
+    
+    svg {
+        color: var(--text-dim);
+        font-size: 1.2rem;
+    }
+
+    input {
+        background-color: transparent;
+        border: none;
+        color: var(--text-main);
+        width: 100%;
+        font-size: 1rem;
+        &:focus {
+            outline: none;
+        }
+        &::placeholder {
+            color: var(--text-dim);
+        }
+    }
+  }
+  
+  .no-results {
+      text-align: center;
+      color: var(--text-dim);
+      margin-top: 2rem;
   }
 
   .contacts {

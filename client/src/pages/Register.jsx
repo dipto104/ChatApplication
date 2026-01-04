@@ -12,6 +12,8 @@ export default function Register() {
   const [values, setValues] = useState({
     username: "",
     email: "",
+    firstName: "",
+    lastName: "",
     password: "",
     confirmPassword: "",
   });
@@ -57,6 +59,15 @@ export default function Register() {
     } else if (email === "") {
       toast.error("Email is required.", toastOptions);
       return false;
+    } else if (username === "") {
+      toast.error("Username is required.", toastOptions);
+      return false;
+    } else if (values.firstName === "") {
+      toast.error("First Name is required.", toastOptions);
+      return false;
+    } else if (values.lastName === "") {
+      toast.error("Last Name is required.", toastOptions);
+      return false;
     }
 
     return true;
@@ -65,10 +76,12 @@ export default function Register() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (handleValidation()) {
-      const { email, username, password } = values;
+      const { email, username, password, firstName, lastName } = values;
       const { data } = await axios.post(registerRoute, {
         username,
         email,
+        firstName,
+        lastName,
         password,
       });
 
@@ -93,6 +106,18 @@ export default function Register() {
             <img src={Logo} alt="logo" />
             <h1>chat</h1>
           </div>
+          <input
+            type="text"
+            placeholder="First Name"
+            name="firstName"
+            onChange={(e) => handleChange(e)}
+          />
+          <input
+            type="text"
+            placeholder="Last Name"
+            name="lastName"
+            onChange={(e) => handleChange(e)}
+          />
           <input
             type="text"
             placeholder="Username"

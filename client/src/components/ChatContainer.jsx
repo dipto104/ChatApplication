@@ -6,7 +6,7 @@ import Logo from "../assets/logo.svg";
 import axios from "axios";
 import { sendMessageRoute, recieveMessageRoute, markAsReadRoute, unsendMessageRoute, removeMessageRoute, deleteConversationRoute, addReactionRoute, removeReactionRoute, host } from "../utils/APIRoutes";
 import { IoMdArrowBack, IoMdClose, IoMdVideocam, IoMdCall } from "react-icons/io";
-import { BsCheck, BsCheckAll, BsThreeDotsVertical } from "react-icons/bs";
+import { BsCheck, BsCheckAll, BsThreeDotsVertical, BsFileEarmarkArrowDown } from "react-icons/bs";
 import { MdAddReaction } from "react-icons/md";
 
 export default function ChatContainer({ currentChat, socket, onlineUsers, currentUser, userStatus, onStatusToggle, onBack, onClose, onVideoCall, onAudioCall, arrivalMessage, refreshContacts, onDeleteConversation }) {
@@ -103,13 +103,14 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
     }
   };
 
-  const handleSendMsg = async (msg, type = "TEXT", fileUrl = null) => {
+  const handleSendMsg = async (msg, type = "TEXT", fileUrl = null, fileName = null) => {
     const messageData = {
       to: currentChat.id,
       from: currentUser.id,
       msg,
       messageType: type,
       fileUrl,
+      fileName,
     };
 
     await axios.post(sendMessageRoute, {
@@ -118,6 +119,7 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
       message: msg,
       messageType: type,
       fileUrl,
+      fileName,
     });
 
     socket.current.emit("send-msg", messageData);
@@ -128,6 +130,7 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
       message: msg,
       messageType: type,
       fileUrl,
+      fileName,
       status: isOnline ? "DELIVERED" : "SENT",
       time: new Date()
     }]);
@@ -159,6 +162,7 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
             message: arrivalMessage.message,
             messageType: arrivalMessage.messageType || "TEXT",
             fileUrl: arrivalMessage.fileUrl || null,
+            fileName: arrivalMessage.fileName || null,
             status: "SENT",
             time: arrivalMessage.time
           }]);
@@ -382,7 +386,7 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
             )}
           </div>
           <div className="username">
-            <h3>{currentChat.username}</h3>
+            <h3>{currentChat.firstName && currentChat.lastName ? `${currentChat.firstName} ${currentChat.lastName}` : currentChat.username}</h3>
             <span className={`status ${isOnline ? "online" : "offline"}`}>
               {isOnline ? "Online" : "Offline"}
             </span>
@@ -462,6 +466,29 @@ export default function ChatContainer({ currentChat, socket, onlineUsers, curren
                         }}
                         style={{ cursor: "pointer" }}
                       />
+                      {message.message && <p>{message.message}</p>}
+                    </div>
+                  ) : message.messageType === "FILE" ? (
+                    <div className="file-content">
+                      <a
+                        href={(() => {
+                          const url = message.fileUrl;
+                          if (!url) return '#';
+                          if (url.startsWith('http') || url.startsWith('data:')) return url;
+                          const cleanUrl = url.replace(/\\/g, '/');
+                          return cleanUrl.startsWith('/') ? cleanUrl : `/${cleanUrl}`;
+                        })()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download
+                        className="file-link"
+                      >
+                        <BsFileEarmarkArrowDown className="file-icon" />
+                        <div className="file-info">
+                          <span>{message.fileName || message.fileUrl?.split('/').pop() || "Download File"}</span>
+                          <span className="download-text">Click to download</span>
+                        </div>
+                      </a>
                       {message.message && <p>{message.message}</p>}
                     </div>
                   ) : (
@@ -776,14 +803,50 @@ const Container = styled.div`
           max-width: 85%;
         }
 
-        &.unsent {
-          font-style: italic;
-          color: rgba(255, 255, 255, 0.4);
-          background-color: rgba(255, 255, 255, 0.05) !important;
-          border: 1px dashed rgba(255, 255, 255, 0.1);
-        }
+      &.unsent {
+        font-style: italic;
+        color: rgba(255, 255, 255, 0.4);
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        border: 1px dashed rgba(255, 255, 255, 0.1);
+      }
+      
+      .file-content {
+          .file-link {
+              display: flex;
+              align-items: center;
+              gap: 0.8rem;
+              text-decoration: none;
+              color: white;
+              background-color: rgba(0,0,0,0.2);
+              padding: 0.5rem 0.8rem;
+              border-radius: 0.5rem;
+              transition: background-color 0.2s;
+              
+              &:hover {
+                  background-color: rgba(0,0,0,0.3);
+              }
+              
+              .file-icon {
+                  font-size: 1.8rem;
+              }
+              
+              .file-info {
+                  display: flex;
+                  flex-direction: column;
+                  span {
+                      font-size: 0.9rem;
+                      font-weight: 500;
+                      word-break: break-all;
+                  }
+                  .download-text {
+                      font-size: 0.7rem;
+                      color: rgba(255,255,255,0.7);
+                  }
+              }
+          }
+      }
 
-        .message-options {
+      .message-options {
           position: absolute;
           top: 50%;
           transform: translateY(-50%);

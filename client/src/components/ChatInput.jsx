@@ -1,19 +1,22 @@
 import React, { useState, useRef } from "react";
 import { BsEmojiSmileFill } from "react-icons/bs";
-import { IoMdSend, IoMdImage } from "react-icons/io";
+import { IoMdSend, IoMdAttach, IoMdImage } from "react-icons/io";
 import styled from "styled-components";
 import Picker from "emoji-picker-react";
 import axios from "axios";
-import { uploadImageRoute, host } from "../utils/APIRoutes";
+import { uploadFileRoute, host } from "../utils/APIRoutes";
 import { compressImage } from "../utils/imageUtils";
+import { BsFileEarmarkText } from "react-icons/bs";
 
 export default function ChatInput({ handleSendMsg }) {
   const [msg, setMsg] = useState("");
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [imageFile, setImageFile] = useState(null);
+  const [filePreview, setFilePreview] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadType, setUploadType] = useState(null); // "IMAGE" or "FILE"
   const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
 
   const handleEmojiPickerhideShow = () => {
     setShowEmojiPicker(!showEmojiPicker);
@@ -27,24 +30,24 @@ export default function ChatInput({ handleSendMsg }) {
 
   const sendChat = async (event) => {
     event.preventDefault();
-    if (msg.length > 0 || imageFile) {
-      if (imageFile) {
+    if (msg.length > 0 || selectedFile) {
+      if (selectedFile) {
         setIsUploading(true);
         const formData = new FormData();
-        formData.append("image", imageFile);
+        formData.append("file", selectedFile);
         try {
-          const response = await axios.post(uploadImageRoute, formData);
+          const response = await axios.post(uploadFileRoute, formData);
           const { filename } = response.data;
           if (filename) {
-            // filename is now "uploads/xyz.jpg" from server
-            handleSendMsg(msg, "IMAGE", filename);
+            handleSendMsg(msg, uploadType === "IMAGE" ? "IMAGE" : "FILE", filename, selectedFile.name);
           }
         } catch (error) {
-          console.error("Image upload failed:", error);
+          console.error("File upload failed:", error);
         } finally {
           setIsUploading(false);
-          setImagePreview(null);
-          setImageFile(null);
+          setFilePreview(null);
+          setSelectedFile(null);
+          setUploadType(null);
         }
       } else {
         handleSendMsg(msg, "TEXT");
@@ -60,29 +63,43 @@ export default function ChatInput({ handleSendMsg }) {
       try {
         setIsUploading(true);
         const compressed = await compressImage(file);
-        setImageFile(compressed);
+        setSelectedFile(compressed);
+        setUploadType("IMAGE");
         const reader = new FileReader();
         reader.onloadend = () => {
-          setImagePreview(reader.result);
+          setFilePreview(reader.result);
           setIsUploading(false);
         };
         reader.readAsDataURL(compressed);
       } catch (err) {
-        console.error("Compression failed:", err);
+        console.error("Image compression failed:", err);
         setIsUploading(false);
       }
     }
-    // Reset input so the same file can be selected again if removed
     event.target.value = "";
   };
 
-  const removeImage = () => {
-    setImagePreview(null);
-    setImageFile(null);
+  const handleFileSelect = async (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+      setUploadType("FILE");
+      setFilePreview("FILE_ICON");
+    }
+    event.target.value = "";
+  };
+
+  const removeFile = () => {
+    setFilePreview(null);
+    setSelectedFile(null);
   };
 
   const triggerFileUpload = () => {
     fileInputRef.current.click();
+  };
+
+  const triggerImageUpload = () => {
+    imageInputRef.current.click();
   };
 
   const handlePaste = async (event) => {
@@ -94,10 +111,10 @@ export default function ChatInput({ handleSendMsg }) {
           try {
             setIsUploading(true);
             const compressed = await compressImage(file);
-            setImageFile(compressed);
+            setSelectedFile(compressed);
             const reader = new FileReader();
             reader.onloadend = () => {
-              setImagePreview(reader.result);
+              setFilePreview(reader.result);
               setIsUploading(false);
             };
             reader.readAsDataURL(compressed);
@@ -122,22 +139,39 @@ export default function ChatInput({ handleSendMsg }) {
           )}
         </div>
         <div className="image-upload">
-          <IoMdImage onClick={triggerFileUpload} />
+          <IoMdImage onClick={triggerImageUpload} title="Send Photo" />
           <input
             type="file"
-            ref={fileInputRef}
+            ref={imageInputRef}
             onChange={handleImageSelect}
             style={{ display: "none" }}
             accept="image/*"
           />
         </div>
+        <div className="image-upload">
+          <IoMdAttach onClick={triggerFileUpload} title="Send File" />
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            style={{ display: "none" }}
+          // No strict accept here, allows all files
+          />
+        </div>
       </div>
       <form className="input-container" onSubmit={(event) => sendChat(event)}>
-        {imagePreview && (
+        {filePreview && (
           <div className="image-preview-wrapper">
             <div className="preview-container">
-              <img src={imagePreview} alt="preview" />
-              <div className="remove-image" onClick={removeImage}>
+              {filePreview === "FILE_ICON" ? (
+                <div className="file-preview">
+                  <BsFileEarmarkText style={{ fontSize: '2rem', color: '#fff' }} />
+                  <span>{selectedFile?.name?.substring(0, 8)}...</span>
+                </div>
+              ) : (
+                <img src={filePreview} alt="preview" />
+              )}
+              <div className="remove-image" onClick={removeFile}>
                 ×
               </div>
             </div>
@@ -145,7 +179,7 @@ export default function ChatInput({ handleSendMsg }) {
         )}
         <input
           type="text"
-          placeholder={imageFile ? "Add a caption..." : "Type your message here..."}
+          placeholder={selectedFile ? "Add a caption..." : "Type your message here..."}
           onChange={(e) => setMsg(e.target.value)}
           onPaste={handlePaste}
           value={msg}
@@ -349,6 +383,22 @@ const Container = styled.div`
         height: 100%;
         object-fit: cover;
         border-radius: 0.8rem;
+      }
+      
+      .file-preview {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255,255,255,0.1);
+          border-radius: 0.8rem;
+          span {
+              font-size: 0.7rem;
+              color: white;
+              margin-top: 2px;
+          }
       }
 
       .remove-image {

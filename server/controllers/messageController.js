@@ -4,7 +4,7 @@ const path = require("path");
 
 module.exports.addMessage = async (req, res, next) => {
     try {
-        const { from, to, message, messageType, fileUrl } = req.body;
+        const { from, to, message, messageType, fileUrl, fileName } = req.body;
         const senderId = parseInt(from);
         const receiverId = parseInt(to);
 
@@ -37,6 +37,7 @@ module.exports.addMessage = async (req, res, next) => {
                 content: message || "",
                 messageType: messageType || "TEXT",
                 fileUrl: fileUrl || null,
+                fileName: fileName || null,
                 sender: { connect: { id: senderId } },
                 conversation: { connect: { id: conversation.id } },
                 status: initialStatus,
@@ -116,6 +117,7 @@ module.exports.getAllMessages = async (req, res, next) => {
                 message: msg.content,
                 messageType: msg.messageType,
                 fileUrl: msg.fileUrl, // Return raw relative path
+                fileName: msg.fileName,
                 status: msg.status,
                 reactions: msg.reactions || [],
                 time: msg.createdAt,

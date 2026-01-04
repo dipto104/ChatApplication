@@ -17,12 +17,12 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 router.post("/addmsg/", addMessage);
-router.post("/uploadimg/", upload.single("image"), (req, res) => {
+router.post("/uploadfile/", upload.single("file"), (req, res) => {
     if (!req.file) {
         return res.status(400).json({ msg: "No file uploaded" });
     }
     // Return relative path suitable for DB storage
-    res.json({ filename: "uploads/" + req.file.filename });
+    res.json({ filename: "uploads/" + req.file.filename, originalName: req.file.originalname });
 });
 router.post("/getmsg/", getAllMessages);
 router.post("/markasread/", markAsRead);
